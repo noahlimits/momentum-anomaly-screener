@@ -129,7 +129,6 @@ def proposed_portfolio_frame(result) -> pd.DataFrame:
         rows.append(
             {
                 "_sort": score.rank if score else 999999,
-                "Rank": score.rank if score else None,
                 "Ticker": rec.ticker,
                 "Company": score.company_name if score else "",
                 "Price": rec.current_price,
@@ -140,7 +139,9 @@ def proposed_portfolio_frame(result) -> pd.DataFrame:
         )
     if not rows:
         return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values(["_sort", "Ticker"]).drop(columns=["_sort"])
+    frame = pd.DataFrame(rows).sort_values(["_sort", "Ticker"]).reset_index(drop=True)
+    frame.insert(0, "Rank", range(1, len(frame) + 1))
+    return frame.drop(columns=["_sort"])
 
 
 def eligible_ranked_frame(result) -> pd.DataFrame:
@@ -153,7 +154,6 @@ def eligible_ranked_frame(result) -> pd.DataFrame:
             {
                 "_sort": score.rank or 999999,
                 "In Portfolio": "Yes" if score.ticker in selected else "",
-                "Rank": score.rank,
                 "Ticker": score.ticker,
                 "Company": score.company_name,
                 "Price": score.price,
@@ -163,7 +163,9 @@ def eligible_ranked_frame(result) -> pd.DataFrame:
         )
     if not rows:
         return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values(["_sort", "Ticker"]).drop(columns=["_sort"])
+    frame = pd.DataFrame(rows).sort_values(["_sort", "Ticker"]).reset_index(drop=True)
+    frame.insert(1, "Rank", range(1, len(frame) + 1))
+    return frame.drop(columns=["_sort"])
 
 
 def enabled_universes(db: Database) -> list[dict]:
@@ -267,11 +269,11 @@ def show_faq_sidebar() -> None:
 
             **What must pass before a stock can be bought**
 
-            The stock must be in the top 20% of the selected universe by score, above its 100-day moving average, and free of a single-day move larger than the configured gap threshold. The universe proxy also has to be above its long-term moving average before new buys are allowed.
+            The stock must be in the top 20% of the selected universe by score, above its 100-day moving average, and free of a single-day move larger than the configured gap threshold. The universe proxy also has to be above its long-term moving average before new buys are allowed. Stocks that fail any rule are excluded from the visible stack rank.
 
             **How the buy list is built**
 
-            Eligible stocks are sorted from strongest to weakest. The app takes the top names up to the max-holdings setting. A 20-stock setting means "buy the top 20 eligible names," not "hold cash if the fixed-risk formula produces fewer shares."
+            Qualified stocks are sorted from strongest to weakest and displayed as rank 1 through N. The app takes the top names up to the max-holdings setting. A 20-stock setting means "buy the top 20 qualified names," not "hold cash if the fixed-risk formula produces fewer shares."
 
             **How risk parity works here**
 
