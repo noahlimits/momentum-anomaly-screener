@@ -272,9 +272,29 @@ def show_faq_sidebar() -> None:
 
             The stock must be in the top 20% of the selected universe by score, above its 100-day moving average, and free of a single-day move larger than the configured gap threshold. The universe proxy also has to be above its long-term moving average before new buys are allowed. Stocks that fail any rule are excluded from the visible stack rank.
 
+            **How the regime filter works**
+
+            The regime filter is a market-level gate for new buying. It does not rank individual stocks. It asks whether the selected universe itself is in a constructive trend.
+
+            Each universe has a proxy: S&P 500 uses SPY, Nasdaq-100 uses QQQ, and the other universes use their configured ETF proxy. The screener compares the proxy's latest adjusted close with its 200-day moving average.
+
+            If the proxy is above the 200-day average, the regime is bullish and new buys are allowed. If the proxy is below the 200-day average, the regime is bearish and new buys are blocked, even if some individual stocks still have strong momentum scores.
+
+            In a brand-new portfolio, a bearish regime means the screener should not create a fresh buy list. In an existing portfolio, bearish regime does not mean sell everything. It only means do not add replacement positions. Existing holdings are still reviewed by their own sell rules.
+
             **How the buy list is built**
 
             Qualified stocks are sorted from strongest to weakest and displayed as rank 1 through N. The app takes the top names up to the max-holdings setting. A 20-stock setting means "buy the top 20 qualified names," not "hold cash if the fixed-risk formula produces fewer shares."
+
+            **How to manage the portfolio**
+
+            Pick a review schedule and use it consistently. A quarterly rebalance is simple: on the review date, run the same universe and holding count, then compare the new target list with what you actually hold.
+
+            First check the regime. If it is bearish, do not add replacement buys. That does not mean sell everything automatically.
+
+            Existing positions are sold only when they break stock-level rules: they fall below the 100-day moving average, drop out of the qualified momentum group, show a single-day move above the gap threshold during the lookback, leave the selected universe, or have a data problem that needs review.
+
+            In a rebalance, sell names that fail those exit rules, keep names that still qualify, and replace open slots only if the regime allows new buys. The updated target portfolio should then be resized by ATR risk parity using current prices and current ATR20 values.
 
             **How risk parity works here**
 
