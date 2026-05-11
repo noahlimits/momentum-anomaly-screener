@@ -129,7 +129,7 @@ def proposed_portfolio_frame(result) -> pd.DataFrame:
         score = score_by_ticker.get(rec.ticker)
         rows.append(
             {
-                "_sort": score.rank if score else 999999,
+                "_sort": rec.target_rank or (score.qualified_rank if score else None) or (score.rank if score else None) or 999999,
                 "Ticker": rec.ticker,
                 "Company": score.company_name if score else "",
                 "Price": rec.current_price,
@@ -153,7 +153,7 @@ def eligible_ranked_frame(result) -> pd.DataFrame:
             continue
         rows.append(
             {
-                "_sort": score.rank or 999999,
+                "_sort": score.qualified_rank or score.rank or 999999,
                 "In Portfolio": "Yes" if score.ticker in selected else "",
                 "Ticker": score.ticker,
                 "Company": score.company_name,
@@ -264,7 +264,7 @@ def show_faq_sidebar() -> None:
 
             For each stock, the screener runs a 90-trading-day linear regression on log price. It annualizes the regression slope, then multiplies it by R-squared:
 
-            `momentum score = annualized trend × R-squared`
+            `momentum score = annualized trend x R-squared`
 
             A high score means the stock has a steep trend and that the trend has been relatively clean. It is a ranking score, not an expected return.
 
@@ -292,15 +292,17 @@ def show_faq_sidebar() -> None:
 
             First check the regime. If it is bearish, do not add replacement buys. That does not mean sell everything automatically.
 
-            Existing positions are sold only when they break stock-level rules: they fall below the 100-day moving average, drop out of the qualified momentum group, show a single-day move above the gap threshold during the lookback, leave the selected universe, or have a data problem that needs review.
+            Existing positions are sold when one of six rules trips: the ticker leaves the selected universe, its data is missing or unreliable, it falls below its 100-day moving average, it has a single-day move above the configured gap threshold during the lookback, it is no longer in the top 20% of the selected universe by momentum score, or it no longer fits inside the current top-N target portfolio after all qualified names are stacked.
 
             In a rebalance, sell names that fail those exit rules, keep names that still qualify, and replace open slots only if the regime allows new buys. The updated target portfolio should then be resized by ATR risk parity using current prices and current ATR20 values.
+
+            A stock disappearing from the buy list is therefore a sell only when the new scan says it fails one of those exit rules or no longer belongs in the selected top-N target portfolio. The regime filter by itself is not a sell signal; it only controls whether open slots can be filled with new buys.
 
             **How risk parity works here**
 
             ATR20 is used as the volatility estimate. Share counts are sized so each position has roughly the same dollar risk for a one-ATR move:
 
-            `shares × ATR20 ≈ equal risk per position`
+            `shares x ATR20 roughly equals equal risk per position`
 
             Higher-volatility stocks get fewer shares. Lower-volatility stocks get more shares. The portfolio is invested across the selected names; any residual is only whole-share rounding that cannot buy another share.
 

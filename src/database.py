@@ -151,9 +151,11 @@ class Database:
             },
             "security_scores": {
                 "portfolio_id": "ALTER TABLE security_scores ADD COLUMN portfolio_id INTEGER",
+                "qualified_rank": "ALTER TABLE security_scores ADD COLUMN qualified_rank INTEGER",
             },
             "recommendations": {
                 "portfolio_id": "ALTER TABLE recommendations ADD COLUMN portfolio_id INTEGER",
+                "target_rank": "ALTER TABLE recommendations ADD COLUMN target_rank INTEGER",
             },
         }
         for table, table_additions in additions.items():
@@ -296,6 +298,7 @@ CREATE TABLE IF NOT EXISTS security_scores (
     sector TEXT,
     price REAL,
     rank INTEGER,
+    qualified_rank INTEGER,
     percentile_rank REAL,
     momentum_score REAL,
     annualized_slope REAL,
@@ -324,6 +327,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     current_price REAL,
     target_value REAL,
     target_weight REAL,
+    target_rank INTEGER,
     reason TEXT,
     universe_id TEXT NOT NULL,
     accepted INTEGER NOT NULL DEFAULT 0,

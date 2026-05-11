@@ -26,6 +26,7 @@ def test_initial_portfolio_is_not_saved_until_accepted(tmp_path: Path):
     assert portfolio_id > 0
     assert holdings
     assert all(holding["portfolio_id"] == portfolio_id for holding in holdings)
+    assert all(rec.target_rank is not None for rec in result.recommendations if rec.action == "BUY")
 
 
 def test_saved_portfolios_do_not_mix_holdings(tmp_path: Path):
@@ -64,6 +65,7 @@ def test_review_uses_calculated_value_plus_cash_adjustment(tmp_path: Path):
     assert review.calculated_portfolio_value is not None
     assert review.portfolio_value == review.calculated_portfolio_value + 10000
     assert any(rec.action in {"HOLD", "RESIZE_UP", "RESIZE_DOWN"} for rec in review.recommendations)
+    assert any(rec.target_rank is not None for rec in review.recommendations if rec.target_shares > 0)
 
 
 def test_review_outputs_exact_share_changes_without_threshold(tmp_path: Path):

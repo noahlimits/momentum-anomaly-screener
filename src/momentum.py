@@ -17,6 +17,7 @@ class SecurityScore:
     sector: str = ""
     price: float | None = None
     rank: int | None = None
+    qualified_rank: int | None = None
     percentile_rank: float | None = None
     momentum_score: float | None = None
     annualized_slope: float | None = None
@@ -76,6 +77,10 @@ def calculate_scores(
                 score.price is not None and score.price > 0,
             ]
         )
+
+    qualified = [score for score in valid if score.eligible]
+    for index, score in enumerate(qualified, start=1):
+        score.qualified_rank = index
 
     return sorted(scores, key=lambda score: (score.rank is None, score.rank or 999999, score.ticker))
 

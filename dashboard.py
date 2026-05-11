@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from html import escape
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
@@ -25,12 +27,20 @@ def app_context() -> tuple[AppConfig, Database]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Momentum Anomaly Screener", layout="wide")
+    st.set_page_config(page_title="Momentum Anomaly Screener", layout="wide", initial_sidebar_state="collapsed")
     apply_app_styles()
     config, db = app_context()
+    show_method_sidebar()
 
-    st.title("Momentum Anomaly Screener")
-    st.caption("Local decision-support dashboard. No brokerage connection. No remote access.")
+    st.markdown(
+        """
+        <div class="app-heading">
+            <h1>Momentum Anomaly Screener</h1>
+            <p>Saved local portfolios, exact rebalance actions, and SQL-backed run history.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     portfolios = db.portfolios()
     tab_create, tab_review = st.tabs(["Create New Portfolio", "Review Saved Portfolio"])
@@ -181,13 +191,17 @@ def show_run_summary(result) -> None:
     additions = sum(1 for rec in result.recommendations if rec.action in {"BUY", "ADD"})
     resizes = sum(1 for rec in result.recommendations if rec.action in {"RESIZE_UP", "RESIZE_DOWN"})
     errors = sum(1 for rec in result.recommendations if rec.action == "DATA_ERROR")
-    cols = st.columns(6)
-    cols[0].metric("Regime", result.regime.status)
-    cols[1].metric("Review value", money(result.portfolio_value))
-    cols[2].metric("Target stocks", result.target_positions)
-    cols[3].metric("Sells", exits)
-    cols[4].metric("Buys", additions)
-    cols[5].metric("Data errors", errors)
+    items = [
+        ("Regime", result.regime.status),
+        ("Review Value", money(result.portfolio_value)),
+        ("Target Names", str(result.target_positions)),
+        ("Sells", str(exits)),
+        ("Buys", str(additions)),
+        ("Resizes", str(resizes)),
+        ("Data Alerts", str(errors)),
+    ]
+    html = "".join(f"<div><span>{escape(label)}</span><strong>{escape(value)}</strong></div>" for label, value in items)
+    st.markdown(f"<div class='summary-strip'>{html}</div>", unsafe_allow_html=True)
     if result.calculated_portfolio_value is not None:
         st.caption(
             f"Calculated current value: {money(result.calculated_portfolio_value)} | "
@@ -198,30 +212,34 @@ def show_run_summary(result) -> None:
 def show_tables(result) -> None:
     if result.mode == "initial":
         buy_list = buy_list_frame(result)
-        st.markdown("#### Buy List")
+        st.markdown("#### Risk-Parity Buy List")
         if buy_list.empty:
             st.warning("No stocks passed all buy filters for this run.")
         else:
-            st.dataframe(style_actions(buy_list), use_container_width=True, hide_index=True)
+            render_buy_table(buy_list)
+        with st.expander("Run Details", expanded=False):
+            st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
         return
 
     sells = exit_list_frame(result)
     actions = trade_actions_frame(result)
-    st.markdown("#### Actions To Take")
+    st.markdown("#### Exact Rebalance Actions")
     if actions.empty:
         st.success("No sells, buys, or share-count changes are required from this scan.")
     else:
-        st.dataframe(style_actions(actions), use_container_width=True, hide_index=True)
+        render_actions_table(actions)
     if not sells.empty:
-        st.markdown("#### Exit Criteria")
-        st.dataframe(style_actions(sells), use_container_width=True, hide_index=True)
+        with st.expander("Sell Rules Triggered", expanded=True):
+            render_exit_table(sells)
 
     target = updated_target_frame(result)
     st.markdown("#### Updated Target Portfolio")
     if target.empty:
         st.warning("No target holdings were produced for this review.")
     else:
-        st.dataframe(style_actions(target), use_container_width=True, hide_index=True)
+        render_target_table(target)
+    with st.expander("Run Details", expanded=False):
+        st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
 
 
 def recommendations_frame(result) -> pd.DataFrame:
@@ -236,6 +254,7 @@ def recommendations_frame(result) -> pd.DataFrame:
                 "price": rec.current_price,
                 "target_value": rec.target_value,
                 "target_weight": rec.target_weight,
+                "target_rank": rec.target_rank,
                 "reason": rec.reason,
             }
             for rec in result.recommendations
@@ -253,16 +272,20 @@ def buy_list_frame(result) -> pd.DataFrame:
         rows.append(
             {
                 "action": rec.action,
-                "_rank": score.rank if score else None,
+                "_sort": rec.target_rank or (score.qualified_rank if score else None) or (score.rank if score else None),
                 "ticker": rec.ticker,
                 "company": score.company_name if score else "",
                 "price": rec.current_price,
                 "shares_to_buy": rec.target_shares,
-                "dollars": rec.target_value,
+                "position_value": rec.target_value,
                 "weight": rec.target_weight,
             }
         )
-    return pd.DataFrame(rows).sort_values(["_rank", "ticker"], na_position="last").drop(columns=["_rank"]) if rows else pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    frame = pd.DataFrame(rows).sort_values(["_sort", "ticker"], na_position="last").reset_index(drop=True)
+    frame.insert(1, "stack", range(1, len(frame) + 1))
+    return frame.drop(columns=["_sort"])
 
 
 def exit_list_frame(result) -> pd.DataFrame:
@@ -299,14 +322,14 @@ def trade_actions_frame(result) -> pd.DataFrame:
         rows.append(
             {
                 "action": trade_action,
-                "_rank": score.rank if score else None,
+                "_rank": rec.target_rank or (score.qualified_rank if score else None) or (score.rank if score else None),
                 "ticker": rec.ticker,
                 "company": score.company_name if score else "",
                 "current_shares": rec.current_shares,
                 "target_shares": rec.target_shares,
                 "share_change": rec.share_change,
                 "price": rec.current_price,
-                "approx_dollars": abs(rec.share_change) * rec.current_price if rec.current_price is not None else None,
+                "trade_value": abs(rec.share_change) * rec.current_price if rec.current_price is not None else None,
                 "reason": rec.reason,
             }
         )
@@ -329,7 +352,7 @@ def updated_target_frame(result) -> pd.DataFrame:
         rows.append(
             {
                 "action": rec.action,
-                "_rank": score.rank if score else None,
+                "_sort": rec.target_rank or (score.qualified_rank if score else None) or (score.rank if score else None),
                 "ticker": rec.ticker,
                 "company": score.company_name if score else "",
                 "current_shares": rec.current_shares,
@@ -340,7 +363,110 @@ def updated_target_frame(result) -> pd.DataFrame:
                 "weight": rec.target_weight,
             }
         )
-    return pd.DataFrame(rows).sort_values(["_rank", "ticker"], na_position="last").drop(columns=["_rank"]) if rows else pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    frame = pd.DataFrame(rows).sort_values(["_sort", "ticker"], na_position="last").reset_index(drop=True)
+    frame.insert(1, "stack", range(1, len(frame) + 1))
+    return frame.drop(columns=["_sort"])
+
+
+def render_buy_table(frame: pd.DataFrame) -> None:
+    headers = ["Stack", "Ticker", "Company", "Price", "Shares", "Position Value", "Weight"]
+    rows = []
+    for _, row in frame.iterrows():
+        ticker = str(row["ticker"])
+        company = "" if pd.isna(row["company"]) else str(row["company"])
+        rows.append(
+            "<tr>"
+            f"<td class='num'>{int(row['stack'])}</td>"
+            f"<td class='ticker'><a href='{escape(market_url(ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
+            f"<td><a class='company-link' href='{escape(wiki_url(company or ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
+            f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{shares_or_blank(row['shares_to_buy'], whole=True)}</td>"
+            f"<td class='num'>{money_or_blank(row['position_value'])}</td>"
+            f"<td class='num'>{percent_or_blank(row['weight'])}</td>"
+            "</tr>"
+        )
+    render_table(headers, rows, "local-table buy-list")
+
+
+def render_actions_table(frame: pd.DataFrame) -> None:
+    headers = ["Action", "Ticker", "Company", "Current", "Target", "Change", "Price", "Trade Value", "Reason"]
+    rows = []
+    for _, row in frame.iterrows():
+        ticker = str(row["ticker"])
+        company = "" if pd.isna(row["company"]) else str(row["company"])
+        action = str(row["action"])
+        rows.append(
+            f"<tr class='{action_class(action)}'>"
+            f"<td>{action_badge(action)}</td>"
+            f"<td class='ticker'><a href='{escape(market_url(ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
+            f"<td><a class='company-link' href='{escape(wiki_url(company or ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
+            f"<td class='num'>{shares_or_blank(row['current_shares'])}</td>"
+            f"<td class='num'>{shares_or_blank(row['target_shares'])}</td>"
+            f"<td class='num'>{signed_shares_or_blank(row['share_change'])}</td>"
+            f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['trade_value'])}</td>"
+            f"<td>{escape(str(row['reason']))}</td>"
+            "</tr>"
+        )
+    render_table(headers, rows, "local-table action-table")
+
+
+def render_exit_table(frame: pd.DataFrame) -> None:
+    headers = ["Ticker", "Company", "Shares To Sell", "Price", "Estimated Value", "Exit Criteria"]
+    rows = []
+    for _, row in frame.iterrows():
+        ticker = str(row["ticker"])
+        company = "" if pd.isna(row["company"]) else str(row["company"])
+        rows.append(
+            "<tr class='sell'>"
+            f"<td class='ticker'><a href='{escape(market_url(ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
+            f"<td><a class='company-link' href='{escape(wiki_url(company or ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
+            f"<td class='num'>{shares_or_blank(row['shares_to_sell'])}</td>"
+            f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['estimated_value'])}</td>"
+            f"<td>{escape(str(row['exit_reason']))}</td>"
+            "</tr>"
+        )
+    render_table(headers, rows, "local-table exit-table")
+
+
+def render_target_table(frame: pd.DataFrame) -> None:
+    headers = ["Stack", "Ticker", "Company", "Current", "Target", "Change", "Price", "Target Value", "Weight"]
+    rows = []
+    for _, row in frame.iterrows():
+        ticker = str(row["ticker"])
+        company = "" if pd.isna(row["company"]) else str(row["company"])
+        rows.append(
+            f"<tr class='{action_class(str(row['action']))}'>"
+            f"<td class='num'>{int(row['stack'])}</td>"
+            f"<td class='ticker'><a href='{escape(market_url(ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
+            f"<td><a class='company-link' href='{escape(wiki_url(company or ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
+            f"<td class='num'>{shares_or_blank(row['current_shares'])}</td>"
+            f"<td class='num'>{shares_or_blank(row['target_shares'])}</td>"
+            f"<td class='num'>{signed_shares_or_blank(row['share_change'])}</td>"
+            f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['target_value'])}</td>"
+            f"<td class='num'>{percent_or_blank(row['weight'])}</td>"
+            "</tr>"
+        )
+    render_table(headers, rows, "local-table target-table")
+
+
+def render_table(headers: list[str], rows: list[str], class_name: str) -> None:
+    header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
+    st.markdown(
+        f"""
+        <div class="local-table-wrap">
+            <table class="{escape(class_name)}">
+                <thead><tr>{header_html}</tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _display_trade_action(action: str, share_change: float) -> str:
@@ -413,8 +539,8 @@ def style_actions(frame: pd.DataFrame):
             "current_value": "${:,.2f}",
             "estimated_value": "${:,.2f}",
             "target_value": "${:,.2f}",
-            "dollars": "${:,.2f}",
-            "approx_dollars": "${:,.2f}",
+            "position_value": "${:,.2f}",
+            "trade_value": "${:,.2f}",
             "target_weight": "{:.2%}",
             "weight": "{:.2%}",
             "current_shares": "{:,.2f}",
@@ -428,20 +554,211 @@ def style_actions(frame: pd.DataFrame):
     )
 
 
+def show_method_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("### Method")
+        st.markdown(
+            """
+            **Regime filter**
+
+            Each universe has a market proxy. The screener compares that proxy with its 200-day moving average. Above the average is bullish and permits new buys. Below it is bearish and blocks new buys.
+
+            The regime filter is not a forced-sell rule. In a saved portfolio, it only decides whether open slots can be filled with replacement stocks.
+
+            **Six sell checks**
+
+            A saved holding is flagged for sale if it leaves the selected universe, has missing or unreliable data, falls below its 100-day moving average, has a single-day gap above the configured threshold, is no longer in the top 20% by momentum score, or no longer fits inside the selected top-N target portfolio after qualified names are stacked.
+
+            **Rebalance workflow**
+
+            Run the same universe and holding count on each review date. Sell the red rows, make the listed buy or resize trades, then accept the review to update the saved SQL portfolio. The target portfolio is resized with current prices and current ATR20 values.
+
+            **Risk parity**
+
+            ATR20 is the volatility estimate. Lower-volatility stocks receive more shares and higher-volatility stocks receive fewer shares so each position contributes similar one-ATR dollar risk.
+            """
+        )
+
+
 def apply_app_styles() -> None:
     st.markdown(
         """
         <style>
         .stApp {
             color: #F8FAFC;
-            background: #0B1020;
+            background: #080C14;
+        }
+        .block-container {
+            max-width: 1500px;
+            padding-top: 3.75rem;
+            padding-bottom: 1.5rem;
+        }
+        section[data-testid="stSidebar"] {
+            background: #0E1420;
+            border-right: 1px solid #25314D;
+        }
+        .app-heading {
+            border-bottom: 1px solid #25314D;
+            margin-bottom: 0.85rem;
+            padding-bottom: 0.75rem;
+        }
+        .app-heading h1 {
+            color: #F8FAFC;
+            font-size: 1.9rem;
+            line-height: 1.08;
+            margin: 0;
+        }
+        .app-heading p {
+            color: #A7F3D0;
+            font-size: 0.92rem;
+            margin: 0.25rem 0 0;
+        }
+        h3 {
+            color: #F8FAFC;
+            font-size: 1.1rem;
+            margin-top: 0.6rem;
+        }
+        h4 {
+            color: #F8FAFC;
+            margin-top: 0.9rem;
+            margin-bottom: 0.4rem;
+        }
+        div[data-testid="stTabs"] button {
+            font-weight: 750;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0.62rem;
         }
         div[data-testid="stMetric"] {
-            background: #121A2F;
+            background: #0E1420;
             border: 1px solid #25314D;
             border-radius: 8px;
             padding: 0.75rem 0.9rem;
         }
+        .summary-strip {
+            display: grid;
+            gap: 0.45rem;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            margin: 0.5rem 0 0.75rem;
+        }
+        .summary-strip div {
+            background: #0E1420;
+            border: 1px solid #25314D;
+            border-radius: 8px;
+            min-width: 0;
+            padding: 0.5rem 0.62rem;
+        }
+        .summary-strip span {
+            color: #CBD5E1;
+            display: block;
+            font-size: 0.7rem;
+            line-height: 1.05;
+        }
+        .summary-strip strong {
+            color: #F8FAFC;
+            display: block;
+            font-size: 0.92rem;
+            line-height: 1.22;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .local-table-wrap {
+            background: #0A0F19;
+            border: 1px solid #25314D;
+            border-radius: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        .local-table {
+            border-collapse: collapse;
+            table-layout: fixed;
+            width: 100%;
+        }
+        .local-table th {
+            background: #111827;
+            border-bottom: 1px solid #334155;
+            color: #93C5FD;
+            font-size: 0.7rem;
+            font-weight: 800;
+            padding: 0.42rem 0.52rem;
+            text-align: left;
+            text-transform: uppercase;
+        }
+        .local-table td {
+            border-bottom: 1px solid rgba(51, 65, 85, 0.72);
+            color: #F8FAFC;
+            font-size: 0.8rem;
+            line-height: 1.18;
+            overflow: hidden;
+            padding: 0.35rem 0.52rem;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .local-table tr:nth-child(even) td { background: #0D1524; }
+        .local-table tr:nth-child(odd) td { background: #0A0F19; }
+        .local-table tr.sell td { background: #341316; color: #FEE2E2; }
+        .local-table tr.buy td { background: #0D2219; color: #DCFCE7; }
+        .local-table tr.resize td { background: #2A210D; color: #FEF3C7; }
+        .local-table tr.hold td { color: #D1FAE5; }
+        .local-table tr:hover td { background: #132238; }
+        .local-table a {
+            color: #67E8F9;
+            text-decoration: none;
+        }
+        .local-table a:hover {
+            color: #A7F3D0;
+            text-decoration: underline;
+        }
+        .local-table .company-link {
+            color: #E2E8F0;
+        }
+        .local-table .ticker {
+            font-weight: 800;
+        }
+        .local-table .num {
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        .buy-list th:nth-child(1), .buy-list td:nth-child(1) { width: 6%; }
+        .buy-list th:nth-child(2), .buy-list td:nth-child(2) { width: 9%; }
+        .buy-list th:nth-child(3), .buy-list td:nth-child(3) { width: 34%; }
+        .buy-list th:nth-child(4), .buy-list td:nth-child(4) { width: 11%; }
+        .buy-list th:nth-child(5), .buy-list td:nth-child(5) { width: 11%; }
+        .buy-list th:nth-child(6), .buy-list td:nth-child(6) { width: 15%; }
+        .buy-list th:nth-child(7), .buy-list td:nth-child(7) { width: 10%; }
+        .action-table th:nth-child(1), .action-table td:nth-child(1) { width: 11%; }
+        .action-table th:nth-child(2), .action-table td:nth-child(2) { width: 8%; }
+        .action-table th:nth-child(3), .action-table td:nth-child(3) { width: 21%; }
+        .action-table th:nth-child(4), .action-table td:nth-child(4) { width: 8%; }
+        .action-table th:nth-child(5), .action-table td:nth-child(5) { width: 8%; }
+        .action-table th:nth-child(6), .action-table td:nth-child(6) { width: 8%; }
+        .action-table th:nth-child(7), .action-table td:nth-child(7) { width: 9%; }
+        .action-table th:nth-child(8), .action-table td:nth-child(8) { width: 11%; }
+        .action-table th:nth-child(9), .action-table td:nth-child(9) { width: 16%; }
+        .target-table th:nth-child(1), .target-table td:nth-child(1) { width: 6%; }
+        .target-table th:nth-child(2), .target-table td:nth-child(2) { width: 8%; }
+        .target-table th:nth-child(3), .target-table td:nth-child(3) { width: 25%; }
+        .target-table th:nth-child(4), .target-table td:nth-child(4) { width: 9%; }
+        .target-table th:nth-child(5), .target-table td:nth-child(5) { width: 9%; }
+        .target-table th:nth-child(6), .target-table td:nth-child(6) { width: 9%; }
+        .target-table th:nth-child(7), .target-table td:nth-child(7) { width: 10%; }
+        .target-table th:nth-child(8), .target-table td:nth-child(8) { width: 14%; }
+        .target-table th:nth-child(9), .target-table td:nth-child(9) { width: 10%; }
+        .action-badge {
+            border-radius: 999px;
+            display: inline-flex;
+            font-size: 0.66rem;
+            font-weight: 850;
+            letter-spacing: 0;
+            line-height: 1;
+            padding: 0.26rem 0.46rem;
+            white-space: nowrap;
+        }
+        .action-badge.sell { background: #7F1D1D; color: #FEE2E2; }
+        .action-badge.buy { background: #14532D; color: #DCFCE7; }
+        .action-badge.resize { background: #78350F; color: #FEF3C7; }
+        .action-badge.hold { background: #164E3A; color: #D1FAE5; }
         .action-legend {
             display: flex;
             flex-wrap: wrap;
@@ -460,6 +777,19 @@ def apply_app_styles() -> None:
         .legend-item.resize { background: #78350f; color: #fef3c7; }
         .legend-item.hold { background: #164e3a; color: #d1fae5; }
         .legend-item.data { background: #4c1d95; color: #f5f3ff; }
+        .stButton button {
+            border-radius: 7px;
+            font-weight: 760;
+        }
+        div[data-testid="stExpander"] {
+            background: #0E1420;
+            border: 1px solid #25314D;
+            border-radius: 8px;
+        }
+        @media (max-width: 1000px) {
+            .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .local-table { min-width: 920px; }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -476,6 +806,58 @@ def enabled_universes(db: Database) -> list[dict]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def action_class(action: str) -> str:
+    if action in {"SELL", "EXIT", "DATA_ERROR"}:
+        return "sell"
+    if action in {"BUY", "ADD"}:
+        return "buy"
+    if action in {"BUY_MORE", "SELL_PARTIAL", "RESIZE_UP", "RESIZE_DOWN"}:
+        return "resize"
+    return "hold"
+
+
+def action_badge(action: str) -> str:
+    labels = {
+        "BUY_MORE": "BUY MORE",
+        "SELL_PARTIAL": "SELL PARTIAL",
+        "DATA_ERROR": "DATA ALERT",
+    }
+    label = labels.get(action, action.replace("_", " "))
+    return f"<span class='action-badge {action_class(action)}'>{escape(label)}</span>"
+
+
+def market_url(ticker: str) -> str:
+    return f"https://finance.yahoo.com/quote/{quote_plus(ticker)}"
+
+
+def wiki_url(company: str) -> str:
+    return f"https://en.wikipedia.org/wiki/Special:Search?search={quote_plus(company)}"
+
+
+def has_value(value) -> bool:
+    return value is not None and pd.notna(value)
+
+
+def money_or_blank(value) -> str:
+    return f"${float(value):,.2f}" if has_value(value) else ""
+
+
+def shares_or_blank(value, whole: bool = False) -> str:
+    if not has_value(value):
+        return ""
+    return f"{float(value):,.0f}" if whole else f"{float(value):,.2f}"
+
+
+def signed_shares_or_blank(value) -> str:
+    if not has_value(value):
+        return ""
+    return f"{float(value):+,.2f}"
+
+
+def percent_or_blank(value) -> str:
+    return f"{float(value):.2%}" if has_value(value) else ""
 
 
 def label_for_universe(universe: dict) -> str:

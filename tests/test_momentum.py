@@ -33,3 +33,4 @@ def test_calculate_scores_marks_top_candidate_eligible_when_regime_allows():
     valid = [score for score in scores if score.data_status == "OK"]
     assert len(valid) == 2
     assert sum(score.eligible for score in valid) == 1
+    assert [score.qualified_rank for score in valid if score.eligible] == [1]

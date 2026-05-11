@@ -109,8 +109,9 @@ def _recommendations_frame(result: StrategyResult) -> pd.DataFrame:
             "target_shares": rec.target_shares,
             "share_change": rec.share_change,
             "current_price": rec.current_price,
-            "approximate_dollar_value": rec.target_value,
+            "position_value": rec.target_value,
             "target_weight": rec.target_weight,
+            "target_rank": rec.target_rank,
             "reason": rec.reason,
         }
         for rec in result.recommendations
@@ -143,7 +144,9 @@ def side_by_side_frame(result: StrategyResult) -> pd.DataFrame:
                 "share_change": target_shares - current_shares,
                 "action": rec.action if rec else "HOLD",
                 "reason": rec.reason if rec else "",
-                "rank": score.rank if score else None,
+                "target_rank": rec.target_rank if rec else None,
+                "momentum_rank": score.rank if score else None,
+                "qualified_rank": score.qualified_rank if score else None,
                 "above_100dma": score.above_100dma if score else None,
                 "top_20pct": score.top_20pct if score else None,
                 "gap_pass": score.gap_pass if score else None,
@@ -155,7 +158,8 @@ def side_by_side_frame(result: StrategyResult) -> pd.DataFrame:
 def _rankings_frame(result: StrategyResult) -> pd.DataFrame:
     rows = [
         {
-            "rank": score.rank,
+            "momentum_rank": score.rank,
+            "qualified_rank": score.qualified_rank,
             "ticker": score.ticker,
             "company": score.company_name,
             "sector": score.sector,
@@ -186,7 +190,9 @@ def _candidates_frame(result: StrategyResult) -> pd.DataFrame:
         score = score_by_ticker.get(rec.ticker)
         rows.append(
             {
-                "rank": score.rank if score else None,
+                "target_rank": rec.target_rank,
+                "qualified_rank": score.qualified_rank if score else None,
+                "momentum_rank": score.rank if score else None,
                 "ticker": rec.ticker,
                 "price": rec.current_price,
                 "atr20": score.atr20 if score else None,
@@ -253,7 +259,8 @@ def _combined_row(rec: Any, score: Any) -> dict[str, Any]:
         "shares": rec.current_shares,
         "current_price": rec.current_price,
         "current_value": rec.current_shares * rec.current_price if rec.current_price else None,
-        "rank": score.rank if score else None,
+        "momentum_rank": score.rank if score else None,
+        "qualified_rank": score.qualified_rank if score else None,
         "percentile_rank": score.percentile_rank if score else None,
         "momentum_score": score.momentum_score if score else None,
         "above_100dma": score.above_100dma if score else False,
@@ -291,7 +298,7 @@ def _format_numbers(worksheet: Any) -> None:
                 cell.number_format = "0.00%"
             elif header in {"momentum_score"}:
                 cell.number_format = "0.00"
-            elif header in {"price", "current_price", "current_value", "target_value", "approximate_dollar_value", "portfolio_value", "estimated_cash", "regime_proxy_close", "regime_proxy_ma", "atr20", "ma100"}:
+            elif header in {"price", "current_price", "current_value", "target_value", "position_value", "portfolio_value", "estimated_cash", "regime_proxy_close", "regime_proxy_ma", "atr20", "ma100"}:
                 cell.number_format = "$#,##0.00"
             elif header and "shares" in str(header):
                 cell.number_format = "0.00"

@@ -25,6 +25,7 @@ class Recommendation:
     current_price: float | None
     target_value: float
     target_weight: float
+    target_rank: int | None
     reason: str
     universe_id: str
 
@@ -223,6 +224,7 @@ def _build_recommendations(
             target_by_ticker[score.ticker] = score
 
     target_scores = sorted(target_by_ticker.values(), key=lambda score: score.rank or 999999)[:target_positions]
+    target_rank_by_ticker = {score.ticker: index for index, score in enumerate(target_scores, start=1)}
     allocations = _allocation_map(portfolio_value, target_scores, allow_fractional)
     target_tickers = set(allocations)
 
@@ -234,7 +236,7 @@ def _build_recommendations(
         if action == "HOLD":
             if ticker not in target_tickers:
                 action = "EXIT"
-                reason = "Outside the selected target count after momentum rank ordering."
+                reason = "No longer in the selected top-N target portfolio after all buy rules and stack ranking."
                 target = 0.0
             elif allocation is None or allocation.shares <= 0:
                 action = "EXIT"
@@ -265,6 +267,7 @@ def _build_recommendations(
                 current_price=price,
                 target_value=value,
                 target_weight=target_weight(value, portfolio_value),
+                target_rank=target_rank_by_ticker.get(ticker),
                 reason=reason,
                 universe_id=universe_id,
             )
@@ -277,7 +280,7 @@ def _build_recommendations(
         shares = allocation.shares if allocation else 0.0
         action = "ADD" if shares > 0 else "NO_CASH"
         reason = "Eligible replacement candidate sized by ATR risk parity." if shares > 0 else "No whole-share target after ATR risk-parity sizing."
-        recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, shares, action, reason, portfolio_value))
+        recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, shares, action, reason, portfolio_value, target_rank_by_ticker.get(score.ticker)))
     return recommendations
 
 
@@ -291,21 +294,19 @@ def _initial_recommendations(
     regime: RegimeStatus,
 ) -> list[Recommendation]:
     recommendations: list[Recommendation] = []
-    cash = portfolio_value
     if not regime.allows_new_buys:
         for score in [item for item in scores if item.top_20pct]:
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, 0.0, "BLOCKED_BY_REGIME", "Regime proxy is below its moving average.", portfolio_value))
+            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, 0.0, "BLOCKED_BY_REGIME", "Regime filter is bearish; new buys are blocked.", portfolio_value))
         return recommendations
 
     selected = [item for item in scores if item.eligible][:target_positions]
     allocations = _allocation_map(portfolio_value, selected, allow_fractional)
-    for score in selected:
+    for target_rank, score in enumerate(selected, start=1):
         allocation = allocations.get(score.ticker)
         desired = allocation.shares if allocation else 0.0
         if desired > 0:
             action, reason = "BUY", "Eligible initial portfolio candidate sized by ATR risk parity."
-            cash -= target_value(desired, score.price)
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, desired, action, reason, portfolio_value))
+            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, desired, action, reason, portfolio_value, target_rank))
     return recommendations
 
 
@@ -324,8 +325,8 @@ def _holding_action(score: SecurityScore | None, current_shares: float) -> tuple
     if not score.gap_pass:
         return "EXIT", "Single-day move exceeded threshold in lookback window."
     if not score.top_20pct:
-        return "EXIT", "Dropped out of top 20% momentum rank."
-    return "HOLD", "Still satisfies stock-level hold rules."
+        return "EXIT", "No longer in the top 20% of the selected universe by momentum score."
+    return "HOLD", "Still passes stock-level exit rules."
 
 
 def _candidate_recommendation(
@@ -336,6 +337,7 @@ def _candidate_recommendation(
     action: str,
     reason: str,
     portfolio_value: float,
+    target_rank: int | None = None,
 ) -> Recommendation:
     value = target_value(shares, score.price)
     return Recommendation(
@@ -348,6 +350,7 @@ def _candidate_recommendation(
         current_price=score.price,
         target_value=value,
         target_weight=target_weight(value, portfolio_value),
+        target_rank=target_rank,
         reason=reason,
         universe_id=universe_id,
     )
@@ -401,12 +404,12 @@ def _persist_run(
             conn.execute(
                 """
                 INSERT INTO security_scores(
-                    run_id, portfolio_id, universe_id, ticker, company_name, sector, price, rank,
+                    run_id, portfolio_id, universe_id, ticker, company_name, sector, price, rank, qualified_rank,
                     percentile_rank, momentum_score, annualized_slope, r_squared,
                     atr20, ma100, above_100dma, gap_max_abs_move, gap_pass,
                     top_20pct, in_universe, eligible, data_status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -417,6 +420,7 @@ def _persist_run(
                     score.sector,
                     score.price,
                     score.rank,
+                    score.qualified_rank,
                     score.percentile_rank,
                     score.momentum_score,
                     score.annualized_slope,
@@ -437,10 +441,10 @@ def _persist_run(
                 """
                 INSERT INTO recommendations(
                     run_id, portfolio_id, ticker, action, current_shares, target_shares,
-                    share_change, current_price, target_value, target_weight,
+                    share_change, current_price, target_value, target_weight, target_rank,
                     reason, universe_id, accepted, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
                 """,
                 (
                     run_id,
@@ -453,6 +457,7 @@ def _persist_run(
                     rec.current_price,
                     rec.target_value,
                     rec.target_weight,
+                    rec.target_rank,
                     rec.reason,
                     rec.universe_id,
                     now,
