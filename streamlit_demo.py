@@ -302,12 +302,33 @@ def table_height(frame: pd.DataFrame, maximum: int) -> int:
 def apply_styles() -> None:
     st.markdown(
         """
+        <div class="faq-open-prompt" aria-hidden="true">FAQ</div>
         <style>
         .stApp { background: #080C14; color: #F8FAFC; }
         .block-container {
             padding-top: 3.75rem;
             padding-bottom: 1.5rem;
             max-width: 1500px;
+        }
+        .faq-open-prompt {
+            align-items: center;
+            background: #0E7490;
+            border: 1px solid #22D3EE;
+            border-radius: 999px;
+            color: #ECFEFF;
+            display: inline-flex;
+            font-size: 0.72rem;
+            font-weight: 800;
+            height: 1.45rem;
+            justify-content: center;
+            left: 3.1rem;
+            letter-spacing: 0;
+            line-height: 1;
+            padding: 0 0.55rem;
+            pointer-events: none;
+            position: fixed;
+            top: 0.8rem;
+            z-index: 1000000;
         }
         div[data-testid="stSidebarCollapsedControl"],
         button[data-testid="collapsedControl"],
