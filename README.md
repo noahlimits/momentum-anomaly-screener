@@ -54,6 +54,8 @@ This demo entry point does not save portfolios. It accepts a portfolio amount an
 
 For a hosted Streamlit demo, use `streamlit_demo.py` as the app entry point. The demo is intentionally stateless for visitors: it does not save portfolios, create reports, or require any brokerage connection.
 
+If Streamlit asks for the main file path, `streamlit_app.py` is also available as a conventional entry point.
+
 The local saved-portfolio dashboard remains `dashboard.py` and is started with `Start Momentum Anomaly Screener.bat`.
 
 Accept all recommendations from the most recent run:
