@@ -1,0 +1,131 @@
+database_path: data/momentum_anomaly_state.sqlite
+reports_dir: reports
+cache_dir: data/cache
+
+settings:
+  portfolio_value: 10000
+  selected_universe_id: sp500
+  momentum_lookback_days: 90
+  atr_lookback_days: 20
+  stock_ma_days: 100
+  regime_ma_days: 200
+  gap_threshold: 0.15
+  rank_cutoff_percent: 0.20
+  target_positions: 10
+  allow_fractional_shares: false
+  review_day: Wednesday
+  rebalance_threshold: 0.10
+  allow_global_regime_proxy: false
+  global_regime_proxy: SPY
+
+universe_profiles:
+  - universe_id: sp500
+    display_name: S&P 500
+    enabled: true
+    default_profile: true
+    constituent_source_type: wikipedia
+    constituent_source: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
+    regime_proxy: SPY
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US large cap
+    notes: Standard large-cap U.S. universe.
+  - universe_id: nasdaq100
+    display_name: Nasdaq-100
+    enabled: true
+    default_profile: false
+    constituent_source_type: wikipedia
+    constituent_source: https://en.wikipedia.org/wiki/Nasdaq-100
+    regime_proxy: QQQ
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US large cap growth
+    notes: Growth/technology-concentrated large-cap universe.
+  - universe_id: sp400
+    display_name: S&P MidCap 400
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239763/ishares-core-sp-midcap-etf/1467271812596.ajax?fileType=csv&fileName=IJH_holdings&dataType=fund
+    regime_proxy: IJH
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US mid cap
+    notes: ETF holdings proxy via IJH.
+  - universe_id: russell1000_growth
+    display_name: Russell 1000 Growth
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239706/ishares-russell-1000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWF_holdings&dataType=fund
+    regime_proxy: IWF
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US large/mid cap growth
+    notes: ETF holdings proxy via IWF.
+  - universe_id: russell2000
+    display_name: Russell 2000
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund
+    regime_proxy: IWM
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US small cap
+    notes: ETF holdings proxy via IWM.
+  - universe_id: sp600
+    display_name: S&P SmallCap 600
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239774/ishares-core-sp-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=IJR_holdings&dataType=fund
+    regime_proxy: IJR
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US small cap
+    notes: ETF holdings proxy via IJR.
+  - universe_id: msci_world_ex_usa
+    display_name: MSCI World ex USA
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/244049/ishares-core-msci-eafe-etf/1467271812596.ajax?fileType=csv&fileName=IEFA_holdings&dataType=fund
+    regime_proxy: IEFA
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: Developed markets ex US
+    notes: ETF holdings proxy via IEFA.
+  - universe_id: msci_em
+    display_name: MSCI Emerging Markets
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239637/ishares-msci-emerging-markets-etf/1467271812596.ajax?fileType=csv&fileName=EEM_holdings&dataType=fund
+    regime_proxy: EEM
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: Emerging markets
+    notes: ETF holdings proxy via EEM.
+  - universe_id: msci_em_smallcap
+    display_name: MSCI Emerging Markets Small Cap
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239642/ishares-msci-emerging-markets-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=EEMS_holdings&dataType=fund
+    regime_proxy: EEMS
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: Emerging markets small cap
+    notes: ETF holdings proxy via EEMS.
+  - universe_id: msci_frontier
+    display_name: MSCI Frontier Markets
+    enabled: false
+    default_profile: false
+    constituent_source_type: static_csv
+    constituent_source: data/universe_csv/msci_frontier.csv
+    regime_proxy: FM
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: Frontier markets
+    notes: Template. ETF holdings may be used as a practical proxy.
