@@ -74,7 +74,8 @@ def main() -> None:
 
     result = st.session_state.get("demo_result")
     if not result:
-        st.info("Enter a portfolio amount, choose a universe, and run the screener.")
+        hint_cols = st.columns([1, 0.85, 1.35, 0.65])
+        hint_cols[0].markdown('<div class="run-hint">Set amount, choose universe, run.</div>', unsafe_allow_html=True)
         return
 
     portfolio = proposed_portfolio_frame(result)
@@ -329,7 +330,7 @@ def apply_styles() -> None:
             pointer-events: none;
             position: fixed;
             top: 0.8rem;
-            z-index: 1000000;
+            z-index: 900;
         }
         div[data-testid="stSidebarCollapsedControl"],
         button[data-testid="collapsedControl"],
@@ -359,6 +360,8 @@ def apply_styles() -> None:
         section[data-testid="stSidebar"] {
             background: #0E1420;
             border-right: 1px solid #25314D;
+            position: relative;
+            z-index: 1000;
         }
         section[data-testid="stSidebar"] h3 {
             font-size: 1rem;
@@ -395,6 +398,18 @@ def apply_styles() -> None:
         }
         div[data-testid="stAlert"] {
             padding: 0.65rem 0.85rem;
+        }
+        .run-hint {
+            background: #0E1420;
+            border: 1px solid #25314D;
+            border-radius: 8px;
+            color: #CBD5E1;
+            font-size: 0.82rem;
+            font-weight: 650;
+            line-height: 1.2;
+            margin-top: 0.15rem;
+            padding: 0.52rem 0.65rem;
+            width: 100%;
         }
         div[data-testid="stExpander"] {
             border: 1px solid #25314D;
