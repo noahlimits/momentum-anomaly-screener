@@ -74,7 +74,7 @@ def main() -> None:
 
     result = st.session_state.get("demo_result")
     if not result:
-        hint_cols = st.columns([1, 0.85, 1.35, 0.65])
+        hint_cols = st.columns([3.2, 0.65])
         hint_cols[0].markdown('<div class="run-hint">Set amount, choose universe, run.</div>', unsafe_allow_html=True)
         return
 
@@ -330,7 +330,7 @@ def apply_styles() -> None:
             pointer-events: none;
             position: fixed;
             top: 0.8rem;
-            z-index: 900;
+            z-index: 999998;
         }
         div[data-testid="stSidebarCollapsedControl"],
         button[data-testid="collapsedControl"],
@@ -361,7 +361,7 @@ def apply_styles() -> None:
             background: #0E1420;
             border-right: 1px solid #25314D;
             position: relative;
-            z-index: 1000;
+            z-index: 999999;
         }
         section[data-testid="stSidebar"] h3 {
             font-size: 1rem;
