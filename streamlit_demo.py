@@ -26,7 +26,7 @@ def app_context() -> tuple[AppConfig, Database]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Momentum Anomaly Screener", layout="wide")
+    st.set_page_config(page_title="Momentum Anomaly Screener", layout="wide", initial_sidebar_state="collapsed")
     apply_styles()
     config, db = app_context()
     show_faq_sidebar()
@@ -305,9 +305,34 @@ def apply_styles() -> None:
         <style>
         .stApp { background: #080C14; color: #F8FAFC; }
         .block-container {
-            padding-top: 1rem;
+            padding-top: 3.75rem;
             padding-bottom: 1.5rem;
             max-width: 1500px;
+        }
+        div[data-testid="stSidebarCollapsedControl"],
+        button[data-testid="collapsedControl"],
+        button[data-testid="stSidebarCollapsedControl"] {
+            align-items: center;
+            border-radius: 999px;
+            gap: 0.35rem;
+            width: auto;
+        }
+        div[data-testid="stSidebarCollapsedControl"]::after,
+        button[data-testid="collapsedControl"]::after,
+        button[data-testid="stSidebarCollapsedControl"]::after {
+            content: "FAQ";
+            background: #0E7490;
+            border: 1px solid #22D3EE;
+            border-radius: 999px;
+            color: #ECFEFF;
+            display: inline-flex;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0;
+            line-height: 1;
+            margin-left: 0.25rem;
+            padding: 0.26rem 0.5rem;
+            pointer-events: none;
         }
         section[data-testid="stSidebar"] {
             background: #0E1420;
@@ -458,6 +483,7 @@ def apply_styles() -> None:
             text-align: right;
         }
         @media (max-width: 900px) {
+            .block-container { padding-top: 4.25rem; }
             .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .buy-table th, .buy-table td { font-size: 0.72rem; padding: 0.32rem 0.38rem; }
         }
