@@ -9,7 +9,7 @@ from .database import Database, utc_now
 from .data_provider import DataProvider
 from .momentum import SecurityScore, calculate_scores
 from .regime import RegimeStatus, calculate_regime
-from .sizing import target_shares, target_value, target_weight
+from .sizing import risk_parity_targets, target_value, target_weight
 from .universe import Constituent, load_constituents, metadata_from_constituents
 from .utils import as_bool, as_float, as_int
 
@@ -206,35 +206,54 @@ def _build_recommendations(
         return _initial_recommendations(portfolio_id, universe_id, portfolio_value, target_positions, scores, allow_fractional, regime)
 
     held_tickers = {holding["ticker"] for holding in holdings}
-    cash_from_exits = 0.0
+    holding_reviews: list[tuple[dict[str, Any], SecurityScore | None, str, str]] = []
+    target_by_ticker: dict[str, SecurityScore] = {}
     for holding in holdings:
         ticker = holding["ticker"]
-        current_shares = float(holding["shares"])
         score = by_ticker.get(ticker)
-        action, reason = _holding_action(score, current_shares)
-        if action == "HOLD" and score and score.atr20:
-            desired = target_shares(portfolio_value, score.atr20, allow_fractional)
-            if desired <= 0:
+        action, reason = _holding_action(score, float(holding["shares"]))
+        holding_reviews.append((holding, score, action, reason))
+        if action == "HOLD" and score is not None:
+            target_by_ticker[score.ticker] = score
+
+    if regime.allows_new_buys:
+        for score in [item for item in scores if item.eligible and item.ticker not in held_tickers]:
+            if len(target_by_ticker) >= target_positions:
+                break
+            target_by_ticker[score.ticker] = score
+
+    target_scores = sorted(target_by_ticker.values(), key=lambda score: score.rank or 999999)[:target_positions]
+    allocations = _allocation_map(portfolio_value, target_scores, allow_fractional)
+    target_tickers = set(allocations)
+
+    for holding, score, action, reason in holding_reviews:
+        ticker = holding["ticker"]
+        current_shares = float(holding["shares"])
+        price = score.price if score else holding_prices.get(ticker)
+        allocation = allocations.get(ticker)
+        if action == "HOLD":
+            if ticker not in target_tickers:
                 action = "EXIT"
-                reason = "ATR sizing is below one share for current portfolio value."
+                reason = "Outside the selected target count after momentum rank ordering."
                 target = 0.0
-            elif desired > current_shares:
-                action = "RESIZE_UP"
-                reason = "Increase to exact ATR risk-parity target."
-                target = desired
-            elif desired < current_shares:
-                action = "RESIZE_DOWN"
-                reason = "Reduce to exact ATR risk-parity target."
-                target = desired
+            elif allocation is None or allocation.shares <= 0:
+                action = "EXIT"
+                reason = "No whole-share target after ATR risk-parity sizing."
+                target = 0.0
             else:
-                target = desired
+                target = allocation.shares
+                if target > current_shares:
+                    action = "RESIZE_UP"
+                    reason = "Increase to ATR risk-parity target."
+                elif target < current_shares:
+                    action = "RESIZE_DOWN"
+                    reason = "Reduce to ATR risk-parity target."
+                else:
+                    reason = "Still satisfies hold rules and ATR risk-parity target."
         else:
             target = 0.0 if action in {"EXIT", "DATA_ERROR"} else current_shares
 
-        price = score.price if score else holding_prices.get(ticker)
         value = target_value(target, price)
-        if action == "EXIT" and price is not None:
-            cash_from_exits += current_shares * price
         recommendations.append(
             Recommendation(
                 portfolio_id=portfolio_id,
@@ -251,29 +270,14 @@ def _build_recommendations(
             )
         )
 
-    used_for_existing_targets = sum(item.target_value for item in recommendations if item.action != "EXIT")
-    available_cash = max(0.0, portfolio_value - used_for_existing_targets) + cash_from_exits
-
-    if not regime.allows_new_buys:
-        for score in [item for item in scores if item.ticker not in held_tickers and item.top_20pct]:
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, 0.0, "BLOCKED_BY_REGIME", "Regime proxy is below its moving average.", portfolio_value))
-        return recommendations
-
-    current_target_count = sum(1 for item in recommendations if item.target_shares > 0)
-    for score in [item for item in scores if item.eligible and item.ticker not in held_tickers]:
-        if current_target_count >= target_positions:
-            break
-        desired = target_shares(portfolio_value, score.atr20, allow_fractional)
-        value = target_value(desired, score.price)
-        if desired <= 0:
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, 0.0, "NO_CASH", "Target sizing is below one share.", portfolio_value))
+    for score in target_scores:
+        if score.ticker in held_tickers:
             continue
-        if value <= available_cash:
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, desired, "ADD", "Eligible replacement candidate.", portfolio_value))
-            available_cash -= value
-            current_target_count += 1
-        else:
-            recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, desired, "NO_CASH", "Insufficient estimated cash for target shares.", portfolio_value))
+        allocation = allocations.get(score.ticker)
+        shares = allocation.shares if allocation else 0.0
+        action = "ADD" if shares > 0 else "NO_CASH"
+        reason = "Eligible replacement candidate sized by ATR risk parity." if shares > 0 else "No whole-share target after ATR risk-parity sizing."
+        recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, shares, action, reason, portfolio_value))
     return recommendations
 
 
@@ -293,16 +297,21 @@ def _initial_recommendations(
             recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, 0.0, "BLOCKED_BY_REGIME", "Regime proxy is below its moving average.", portfolio_value))
         return recommendations
 
-    for score in [item for item in scores if item.eligible]:
-        if len(recommendations) >= target_positions:
-            break
-        desired = target_shares(portfolio_value, score.atr20, allow_fractional)
-        value = target_value(desired, score.price)
-        if desired > 0 and value <= cash:
-            action, reason = "BUY", "Eligible initial portfolio candidate."
-            cash -= value
+    selected = [item for item in scores if item.eligible][:target_positions]
+    allocations = _allocation_map(portfolio_value, selected, allow_fractional)
+    for score in selected:
+        allocation = allocations.get(score.ticker)
+        desired = allocation.shares if allocation else 0.0
+        if desired > 0:
+            action, reason = "BUY", "Eligible initial portfolio candidate sized by ATR risk parity."
+            cash -= target_value(desired, score.price)
             recommendations.append(_candidate_recommendation(score, portfolio_id, universe_id, desired, action, reason, portfolio_value))
     return recommendations
+
+
+def _allocation_map(portfolio_value: float, scores: list[SecurityScore], allow_fractional: bool) -> dict[str, Any]:
+    candidates = [(score.ticker, score.price, score.atr20) for score in scores]
+    return {target.ticker: target for target in risk_parity_targets(portfolio_value, candidates, allow_fractional)}
 
 
 def _holding_action(score: SecurityScore | None, current_shares: float) -> tuple[str, str]:

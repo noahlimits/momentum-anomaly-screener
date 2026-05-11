@@ -287,8 +287,10 @@ def _format_numbers(worksheet: Any) -> None:
     for row in worksheet.iter_rows(min_row=2):
         for cell in row:
             header = worksheet.cell(row=1, column=cell.column).value
-            if header in {"target_weight", "percentile_rank", "annualized_slope", "r_squared", "momentum_score", "max_single_day_move"}:
+            if header in {"target_weight", "percentile_rank", "annualized_slope", "r_squared", "max_single_day_move"}:
                 cell.number_format = "0.00%"
+            elif header in {"momentum_score"}:
+                cell.number_format = "0.00"
             elif header in {"price", "current_price", "current_value", "target_value", "approximate_dollar_value", "portfolio_value", "estimated_cash", "regime_proxy_close", "regime_proxy_ma", "atr20", "ma100"}:
                 cell.number_format = "$#,##0.00"
             elif header and "shares" in str(header):
