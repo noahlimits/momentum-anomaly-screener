@@ -102,7 +102,7 @@ def main() -> None:
 
 def show_summary(result, portfolio: pd.DataFrame) -> None:
     buys = [rec for rec in result.recommendations if rec.action == "BUY"]
-    invested = float(portfolio["Buy $"].sum()) if not portfolio.empty else 0.0
+    invested = float(portfolio["Position Value"].sum()) if not portfolio.empty else 0.0
     residual = max(0.0, result.portfolio_value - invested)
     st.markdown(
         f"""
@@ -134,7 +134,7 @@ def proposed_portfolio_frame(result) -> pd.DataFrame:
                 "Company": score.company_name if score else "",
                 "Price": rec.current_price,
                 "Shares": rec.target_shares,
-                "Buy $": rec.target_value,
+                "Position Value": rec.target_value,
                 "Weight %": rec.target_weight * 100,
             }
         )
@@ -185,7 +185,7 @@ def portfolio_columns() -> dict:
         "Company": st.column_config.TextColumn("Company", width="medium"),
         "Price": st.column_config.NumberColumn("Price", width="small", format="$%.2f"),
         "Shares": st.column_config.NumberColumn("Shares", width="small", format="%d"),
-        "Buy $": st.column_config.NumberColumn("Buy $", width="small", format="$%.0f"),
+        "Position Value": st.column_config.NumberColumn("Position Value", width="small", format="$%.0f"),
         "Weight %": st.column_config.NumberColumn("Weight", width="small", format="%.2f%%"),
     }
 
@@ -208,7 +208,7 @@ def eligible_columns() -> dict:
 
 
 def render_buy_table(frame: pd.DataFrame) -> None:
-    headers = ["Rank", "Ticker", "Company", "Price", "Shares", "Buy $", "Weight %"]
+    headers = ["Rank", "Ticker", "Company", "Price", "Shares", "Position Value", "Weight %"]
     rows = []
     for _, row in frame.iterrows():
         ticker = str(row["Ticker"])
@@ -222,7 +222,7 @@ def render_buy_table(frame: pd.DataFrame) -> None:
             f"<td><a class='company-link' href='{wiki_url_value}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
             f"<td class='num'>{money(float(row['Price'])) if pd.notna(row['Price']) else ''}</td>"
             f"<td class='num'>{float(row['Shares']):,.0f}</td>"
-            f"<td class='num'>{money(float(row['Buy $']))}</td>"
+            f"<td class='num'>{money(float(row['Position Value']))}</td>"
             f"<td class='num'>{float(row['Weight %']):.2f}%</td>"
             "</tr>"
         )
@@ -251,46 +251,45 @@ def wiki_url(company: str) -> str:
 def show_faq_sidebar() -> None:
     with st.sidebar:
         st.markdown("### Method")
-        with st.expander("FAQ: how this works", expanded=False):
-            st.markdown(
-                """
-                **What the momentum anomaly is**
+        st.markdown(
+            """
+            **What the momentum anomaly is**
 
-                Stocks with strong intermediate-term relative strength have historically tended to keep outperforming for a while. The anomaly is not just "price went up"; the goal is to find persistent, smooth upward trends and avoid one-day jumps.
+            Stocks with strong intermediate-term relative strength have historically tended to keep outperforming for a while. The anomaly is not just "price went up"; the goal is to find persistent, smooth upward trends and avoid one-day jumps.
 
-                **How the score is calculated**
+            **How the score is calculated**
 
-                For each stock, the screener runs a 90-trading-day linear regression on log price. It annualizes the regression slope, then multiplies it by R-squared:
+            For each stock, the screener runs a 90-trading-day linear regression on log price. It annualizes the regression slope, then multiplies it by R-squared:
 
-                `momentum score = annualized trend × R-squared`
+            `momentum score = annualized trend × R-squared`
 
-                A high score means the stock has a steep trend and that the trend has been relatively clean. It is a ranking score, not an expected return.
+            A high score means the stock has a steep trend and that the trend has been relatively clean. It is a ranking score, not an expected return.
 
-                **What must pass before a stock can be bought**
+            **What must pass before a stock can be bought**
 
-                The stock must be in the top 20% of the selected universe by score, above its 100-day moving average, and free of a single-day move larger than the configured gap threshold. The universe proxy also has to be above its long-term moving average before new buys are allowed.
+            The stock must be in the top 20% of the selected universe by score, above its 100-day moving average, and free of a single-day move larger than the configured gap threshold. The universe proxy also has to be above its long-term moving average before new buys are allowed.
 
-                **How the buy list is built**
+            **How the buy list is built**
 
-                Eligible stocks are sorted from strongest to weakest. The app takes the top names up to the max-holdings setting. A 20-stock setting means "buy the top 20 eligible names," not "hold cash if the fixed-risk formula produces fewer shares."
+            Eligible stocks are sorted from strongest to weakest. The app takes the top names up to the max-holdings setting. A 20-stock setting means "buy the top 20 eligible names," not "hold cash if the fixed-risk formula produces fewer shares."
 
-                **How risk parity works here**
+            **How risk parity works here**
 
-                ATR20 is used as the volatility estimate. Share counts are sized so each position has roughly the same dollar risk for a one-ATR move:
+            ATR20 is used as the volatility estimate. Share counts are sized so each position has roughly the same dollar risk for a one-ATR move:
 
-                `shares × ATR20 ≈ equal risk per position`
+            `shares × ATR20 ≈ equal risk per position`
 
-                Higher-volatility stocks get fewer shares. Lower-volatility stocks get more shares. The portfolio is invested across the selected names; any residual is only whole-share rounding that cannot buy another share.
+            Higher-volatility stocks get fewer shares. Lower-volatility stocks get more shares. The portfolio is invested across the selected names; any residual is only whole-share rounding that cannot buy another share.
 
-                **Why max holdings matters**
+            **Why max holdings matters**
 
-                Around 20 names is a practical default: diversified enough to reduce single-stock risk, concentrated enough that the ranking signal still matters. Smaller accounts may use closer to 10 because high share prices and whole-share rounding make exact allocation harder.
+            Around 20 names is a practical default: diversified enough to reduce single-stock risk, concentrated enough that the ranking signal still matters. Smaller accounts may use closer to 10 because high share prices and whole-share rounding make exact allocation harder.
 
-                **Why switch universes**
+            **Why switch universes**
 
-                The universe defines the opportunity set. S&P 500 is broad large-cap U.S. Nasdaq-100 is growth-heavy. Mid-cap and small-cap universes can be more aggressive. International and emerging-market universes add geographic diversification but can introduce more data, currency, and liquidity noise.
-                """
-            )
+            The universe defines the opportunity set. S&P 500 is broad large-cap U.S. Nasdaq-100 is growth-heavy. Mid-cap and small-cap universes can be more aggressive. International and emerging-market universes add geographic diversification but can introduce more data, currency, and liquidity noise.
+            """
+        )
 
 
 def table_height(frame: pd.DataFrame, maximum: int) -> int:
