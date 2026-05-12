@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from dataclasses import replace
 from html import escape
 from pathlib import Path
@@ -218,6 +219,7 @@ def show_tables(result) -> None:
         else:
             render_buy_table(buy_list)
             render_csv_download(buy_list, "Export Buy List CSV", "momentum-anomaly-buy-list.csv")
+            render_yahoo_csv_download(buy_list, "Export Yahoo Finance CSV", "momentum-anomaly-yahoo-finance-import.csv", "shares_to_buy")
         with st.expander("Run Details", expanded=False):
             st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
         return
@@ -241,6 +243,7 @@ def show_tables(result) -> None:
     else:
         render_target_table(target)
         render_csv_download(target, "Export Target CSV", "momentum-anomaly-target-portfolio.csv")
+        render_yahoo_csv_download(target, "Export Yahoo Target CSV", "momentum-anomaly-yahoo-finance-target.csv", "target_shares")
     with st.expander("Run Details", expanded=False):
         st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
 
@@ -490,6 +493,35 @@ def render_csv_download(frame: pd.DataFrame, label: str, filename: str) -> None:
         file_name=filename,
         mime="text/csv",
         key=filename,
+    )
+
+
+def render_yahoo_csv_download(frame: pd.DataFrame, label: str, filename: str, quantity_col: str) -> None:
+    export = yahoo_import_frame(
+        tickers=frame["ticker"],
+        prices=frame["price"],
+        quantities=frame[quantity_col],
+        comment="Momentum Anomaly Screener",
+    )
+    st.download_button(
+        label,
+        data=export.to_csv(index=False).encode("utf-8"),
+        file_name=filename,
+        mime="text/csv",
+        key=filename,
+    )
+
+
+def yahoo_import_frame(tickers: pd.Series, prices: pd.Series, quantities: pd.Series, comment: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "Symbol": tickers.astype(str),
+            "Trade Date": datetime.now().strftime("%Y%m%d"),
+            "Purchase Price": pd.to_numeric(prices, errors="coerce").round(4),
+            "Quantity": pd.to_numeric(quantities, errors="coerce").round(6),
+            "Comment": comment,
+            "Extra": "",
+        }
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from tempfile import gettempdir
@@ -88,6 +89,7 @@ def main() -> None:
     else:
         render_buy_table(portfolio)
         render_csv_download(portfolio, "momentum-anomaly-buy-list.csv")
+        render_yahoo_csv_download(portfolio, "momentum-anomaly-yahoo-finance-import.csv")
 
     with st.expander("Eligible Stack Rank", expanded=False):
         if eligible.empty:
@@ -256,6 +258,34 @@ def render_csv_download(frame: pd.DataFrame, filename: str) -> None:
         data=export.to_csv(index=False).encode("utf-8"),
         file_name=filename,
         mime="text/csv",
+    )
+
+
+def render_yahoo_csv_download(frame: pd.DataFrame, filename: str) -> None:
+    export = yahoo_import_frame(
+        tickers=frame["Ticker"],
+        prices=frame["Price"],
+        quantities=frame["Shares"],
+        comment="Momentum Anomaly Screener",
+    )
+    st.download_button(
+        "Export Yahoo Finance CSV",
+        data=export.to_csv(index=False).encode("utf-8"),
+        file_name=filename,
+        mime="text/csv",
+    )
+
+
+def yahoo_import_frame(tickers: pd.Series, prices: pd.Series, quantities: pd.Series, comment: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "Symbol": tickers.astype(str),
+            "Trade Date": datetime.now().strftime("%Y%m%d"),
+            "Purchase Price": pd.to_numeric(prices, errors="coerce").round(4),
+            "Quantity": pd.to_numeric(quantities, errors="coerce").round(6),
+            "Comment": comment,
+            "Extra": "",
+        }
     )
 
 
