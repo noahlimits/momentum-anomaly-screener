@@ -35,7 +35,7 @@ def main() -> None:
         """
         <div class="app-heading">
             <h1>Momentum Anomaly Screener</h1>
-            <p>Rules-based equity ranking and ATR risk-parity allocation.</p>
+            <p>Momentum-based equity ranking and risk-parity allocation.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -75,7 +75,7 @@ def main() -> None:
     result = st.session_state.get("demo_result")
     if not result:
         hint_cols = st.columns([3.2, 0.65])
-        hint_cols[0].markdown('<div class="run-hint">Set amount, choose universe, run.</div>', unsafe_allow_html=True)
+        hint_cols[0].markdown('<div class="run-hint">Set Amount, Set Holdings, Choose Universe, Run.</div>', unsafe_allow_html=True)
         return
 
     portfolio = proposed_portfolio_frame(result)
@@ -87,6 +87,7 @@ def main() -> None:
         st.warning("No portfolio could be built. The market regime may be blocking new buys, or no stocks passed all filters.")
     else:
         render_buy_table(portfolio)
+        render_csv_download(portfolio, "momentum-anomaly-buy-list.csv")
 
     with st.expander("Eligible Stack Rank", expanded=False):
         if eligible.empty:
@@ -133,6 +134,7 @@ def proposed_portfolio_frame(result) -> pd.DataFrame:
                 "Ticker": rec.ticker,
                 "Company": score.company_name if score else "",
                 "Price": rec.current_price,
+                "ATR20": score.atr20 if score else None,
                 "Shares": rec.target_shares,
                 "Position Value": rec.target_value,
                 "Weight %": rec.target_weight * 100,
@@ -187,6 +189,7 @@ def portfolio_columns() -> dict:
         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
         "Company": st.column_config.TextColumn("Company", width="medium"),
         "Price": st.column_config.NumberColumn("Price", width="small", format="$%.2f"),
+        "ATR20": st.column_config.NumberColumn("ATR20", width="small", format="$%.2f"),
         "Shares": st.column_config.NumberColumn("Shares", width="small", format="%d"),
         "Position Value": st.column_config.NumberColumn("Position Value", width="small", format="$%.0f"),
         "Weight %": st.column_config.NumberColumn("Weight", width="small", format="%.2f%%"),
@@ -211,7 +214,7 @@ def eligible_columns() -> dict:
 
 
 def render_buy_table(frame: pd.DataFrame) -> None:
-    headers = ["Rank", "Ticker", "Company", "Price", "Shares", "Position Value", "Weight %"]
+    headers = ["Rank", "Ticker", "Company", "Price", "ATR20", "Shares", "Position Value", "Weight %"]
     rows = []
     for _, row in frame.iterrows():
         ticker = str(row["Ticker"])
@@ -224,6 +227,7 @@ def render_buy_table(frame: pd.DataFrame) -> None:
             f"<td class='ticker'><a href='{ticker_url}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
             f"<td><a class='company-link' href='{wiki_url_value}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
             f"<td class='num'>{money(float(row['Price'])) if pd.notna(row['Price']) else ''}</td>"
+            f"<td class='num'>{money(float(row['ATR20'])) if pd.notna(row['ATR20']) else ''}</td>"
             f"<td class='num'>{float(row['Shares']):,.0f}</td>"
             f"<td class='num'>{money(float(row['Position Value']))}</td>"
             f"<td class='num'>{float(row['Weight %']):.2f}%</td>"
@@ -240,6 +244,18 @@ def render_buy_table(frame: pd.DataFrame) -> None:
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def render_csv_download(frame: pd.DataFrame, filename: str) -> None:
+    export = frame.copy()
+    export.insert(export.columns.get_loc("Ticker") + 1, "Ticker URL", export["Ticker"].map(market_url))
+    export.insert(export.columns.get_loc("Company") + 1, "Company URL", export["Company"].map(lambda value: wiki_url(str(value))))
+    st.download_button(
+        "Export Buy List CSV",
+        data=export.to_csv(index=False).encode("utf-8"),
+        file_name=filename,
+        mime="text/csv",
     )
 
 
@@ -447,6 +463,12 @@ def apply_styles() -> None:
             background: #0E7490;
             color: #ECFEFF;
         }
+        div[data-testid="stDownloadButton"] button {
+            min-height: 2.15rem;
+            margin-top: 0.45rem;
+            padding: 0.16rem 0.75rem;
+            width: auto;
+        }
         .summary-strip {
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -518,11 +540,12 @@ def apply_styles() -> None:
         }
         .buy-table th:nth-child(1), .buy-table td:nth-child(1) { width: 5%; }
         .buy-table th:nth-child(2), .buy-table td:nth-child(2) { width: 8%; }
-        .buy-table th:nth-child(3), .buy-table td:nth-child(3) { width: 33%; }
-        .buy-table th:nth-child(4), .buy-table td:nth-child(4) { width: 10%; }
-        .buy-table th:nth-child(5), .buy-table td:nth-child(5) { width: 10%; }
-        .buy-table th:nth-child(6), .buy-table td:nth-child(6) { width: 14%; }
-        .buy-table th:nth-child(7), .buy-table td:nth-child(7) { width: 10%; }
+        .buy-table th:nth-child(3), .buy-table td:nth-child(3) { width: 29%; }
+        .buy-table th:nth-child(4), .buy-table td:nth-child(4) { width: 9%; }
+        .buy-table th:nth-child(5), .buy-table td:nth-child(5) { width: 9%; }
+        .buy-table th:nth-child(6), .buy-table td:nth-child(6) { width: 9%; }
+        .buy-table th:nth-child(7), .buy-table td:nth-child(7) { width: 14%; }
+        .buy-table th:nth-child(8), .buy-table td:nth-child(8) { width: 9%; }
         .buy-table .ticker {
             font-weight: 800;
         }

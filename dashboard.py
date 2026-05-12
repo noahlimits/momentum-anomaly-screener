@@ -36,7 +36,7 @@ def main() -> None:
         """
         <div class="app-heading">
             <h1>Momentum Anomaly Screener</h1>
-            <p>Saved local portfolios, exact rebalance actions, and SQL-backed run history.</p>
+            <p>Momentum-based equity ranking, exact rebalance actions, and SQL-backed run history.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -217,6 +217,7 @@ def show_tables(result) -> None:
             st.warning("No stocks passed all buy filters for this run.")
         else:
             render_buy_table(buy_list)
+            render_csv_download(buy_list, "Export Buy List CSV", "momentum-anomaly-buy-list.csv")
         with st.expander("Run Details", expanded=False):
             st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
         return
@@ -228,6 +229,7 @@ def show_tables(result) -> None:
         st.success("No sells, buys, or share-count changes are required from this scan.")
     else:
         render_actions_table(actions)
+        render_csv_download(actions, "Export Actions CSV", "momentum-anomaly-actions.csv")
     if not sells.empty:
         with st.expander("Sell Rules Triggered", expanded=True):
             render_exit_table(sells)
@@ -238,6 +240,7 @@ def show_tables(result) -> None:
         st.warning("No target holdings were produced for this review.")
     else:
         render_target_table(target)
+        render_csv_download(target, "Export Target CSV", "momentum-anomaly-target-portfolio.csv")
     with st.expander("Run Details", expanded=False):
         st.dataframe(style_actions(recommendations_frame(result)), use_container_width=True, hide_index=True)
 
@@ -276,6 +279,7 @@ def buy_list_frame(result) -> pd.DataFrame:
                 "ticker": rec.ticker,
                 "company": score.company_name if score else "",
                 "price": rec.current_price,
+                "atr20": score.atr20 if score else None,
                 "shares_to_buy": rec.target_shares,
                 "position_value": rec.target_value,
                 "weight": rec.target_weight,
@@ -329,6 +333,7 @@ def trade_actions_frame(result) -> pd.DataFrame:
                 "target_shares": rec.target_shares,
                 "share_change": rec.share_change,
                 "price": rec.current_price,
+                "atr20": score.atr20 if score else None,
                 "trade_value": abs(rec.share_change) * rec.current_price if rec.current_price is not None else None,
                 "reason": rec.reason,
             }
@@ -359,6 +364,7 @@ def updated_target_frame(result) -> pd.DataFrame:
                 "target_shares": rec.target_shares,
                 "share_change": rec.share_change,
                 "price": rec.current_price,
+                "atr20": score.atr20 if score else None,
                 "target_value": rec.target_value,
                 "weight": rec.target_weight,
             }
@@ -371,7 +377,7 @@ def updated_target_frame(result) -> pd.DataFrame:
 
 
 def render_buy_table(frame: pd.DataFrame) -> None:
-    headers = ["Stack", "Ticker", "Company", "Price", "Shares", "Position Value", "Weight"]
+    headers = ["Stack", "Ticker", "Company", "Price", "ATR20", "Shares", "Position Value", "Weight"]
     rows = []
     for _, row in frame.iterrows():
         ticker = str(row["ticker"])
@@ -382,6 +388,7 @@ def render_buy_table(frame: pd.DataFrame) -> None:
             f"<td class='ticker'><a href='{escape(market_url(ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(ticker)}</a></td>"
             f"<td><a class='company-link' href='{escape(wiki_url(company or ticker), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(company)}</a></td>"
             f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['atr20'])}</td>"
             f"<td class='num'>{shares_or_blank(row['shares_to_buy'], whole=True)}</td>"
             f"<td class='num'>{money_or_blank(row['position_value'])}</td>"
             f"<td class='num'>{percent_or_blank(row['weight'])}</td>"
@@ -391,7 +398,7 @@ def render_buy_table(frame: pd.DataFrame) -> None:
 
 
 def render_actions_table(frame: pd.DataFrame) -> None:
-    headers = ["Action", "Ticker", "Company", "Current", "Target", "Change", "Price", "Trade Value", "Reason"]
+    headers = ["Action", "Ticker", "Company", "Current", "Target", "Change", "Price", "ATR20", "Trade Value", "Reason"]
     rows = []
     for _, row in frame.iterrows():
         ticker = str(row["ticker"])
@@ -406,6 +413,7 @@ def render_actions_table(frame: pd.DataFrame) -> None:
             f"<td class='num'>{shares_or_blank(row['target_shares'])}</td>"
             f"<td class='num'>{signed_shares_or_blank(row['share_change'])}</td>"
             f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['atr20'])}</td>"
             f"<td class='num'>{money_or_blank(row['trade_value'])}</td>"
             f"<td>{escape(str(row['reason']))}</td>"
             "</tr>"
@@ -433,7 +441,7 @@ def render_exit_table(frame: pd.DataFrame) -> None:
 
 
 def render_target_table(frame: pd.DataFrame) -> None:
-    headers = ["Stack", "Ticker", "Company", "Current", "Target", "Change", "Price", "Target Value", "Weight"]
+    headers = ["Stack", "Ticker", "Company", "Current", "Target", "Change", "Price", "ATR20", "Target Value", "Weight"]
     rows = []
     for _, row in frame.iterrows():
         ticker = str(row["ticker"])
@@ -447,6 +455,7 @@ def render_target_table(frame: pd.DataFrame) -> None:
             f"<td class='num'>{shares_or_blank(row['target_shares'])}</td>"
             f"<td class='num'>{signed_shares_or_blank(row['share_change'])}</td>"
             f"<td class='num'>{money_or_blank(row['price'])}</td>"
+            f"<td class='num'>{money_or_blank(row['atr20'])}</td>"
             f"<td class='num'>{money_or_blank(row['target_value'])}</td>"
             f"<td class='num'>{percent_or_blank(row['weight'])}</td>"
             "</tr>"
@@ -466,6 +475,21 @@ def render_table(headers: list[str], rows: list[str], class_name: str) -> None:
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def render_csv_download(frame: pd.DataFrame, label: str, filename: str) -> None:
+    export = frame.copy()
+    if "ticker" in export.columns:
+        export.insert(export.columns.get_loc("ticker") + 1, "ticker_url", export["ticker"].map(market_url))
+    if "company" in export.columns:
+        export.insert(export.columns.get_loc("company") + 1, "company_url", export["company"].map(lambda value: wiki_url(str(value))))
+    st.download_button(
+        label,
+        data=export.to_csv(index=False).encode("utf-8"),
+        file_name=filename,
+        mime="text/csv",
+        key=filename,
     )
 
 
@@ -536,6 +560,7 @@ def style_actions(frame: pd.DataFrame):
             "current_price": "${:,.2f}",
             "target_price": "${:,.2f}",
             "price": "${:,.2f}",
+            "atr20": "${:,.2f}",
             "current_value": "${:,.2f}",
             "estimated_value": "${:,.2f}",
             "target_value": "${:,.2f}",
@@ -722,29 +747,32 @@ def apply_app_styles() -> None:
         }
         .buy-list th:nth-child(1), .buy-list td:nth-child(1) { width: 6%; }
         .buy-list th:nth-child(2), .buy-list td:nth-child(2) { width: 9%; }
-        .buy-list th:nth-child(3), .buy-list td:nth-child(3) { width: 34%; }
-        .buy-list th:nth-child(4), .buy-list td:nth-child(4) { width: 11%; }
-        .buy-list th:nth-child(5), .buy-list td:nth-child(5) { width: 11%; }
-        .buy-list th:nth-child(6), .buy-list td:nth-child(6) { width: 15%; }
-        .buy-list th:nth-child(7), .buy-list td:nth-child(7) { width: 10%; }
+        .buy-list th:nth-child(3), .buy-list td:nth-child(3) { width: 28%; }
+        .buy-list th:nth-child(4), .buy-list td:nth-child(4) { width: 10%; }
+        .buy-list th:nth-child(5), .buy-list td:nth-child(5) { width: 9%; }
+        .buy-list th:nth-child(6), .buy-list td:nth-child(6) { width: 9%; }
+        .buy-list th:nth-child(7), .buy-list td:nth-child(7) { width: 15%; }
+        .buy-list th:nth-child(8), .buy-list td:nth-child(8) { width: 10%; }
         .action-table th:nth-child(1), .action-table td:nth-child(1) { width: 11%; }
         .action-table th:nth-child(2), .action-table td:nth-child(2) { width: 8%; }
-        .action-table th:nth-child(3), .action-table td:nth-child(3) { width: 21%; }
+        .action-table th:nth-child(3), .action-table td:nth-child(3) { width: 18%; }
         .action-table th:nth-child(4), .action-table td:nth-child(4) { width: 8%; }
         .action-table th:nth-child(5), .action-table td:nth-child(5) { width: 8%; }
         .action-table th:nth-child(6), .action-table td:nth-child(6) { width: 8%; }
-        .action-table th:nth-child(7), .action-table td:nth-child(7) { width: 9%; }
-        .action-table th:nth-child(8), .action-table td:nth-child(8) { width: 11%; }
-        .action-table th:nth-child(9), .action-table td:nth-child(9) { width: 16%; }
+        .action-table th:nth-child(7), .action-table td:nth-child(7) { width: 8%; }
+        .action-table th:nth-child(8), .action-table td:nth-child(8) { width: 8%; }
+        .action-table th:nth-child(9), .action-table td:nth-child(9) { width: 11%; }
+        .action-table th:nth-child(10), .action-table td:nth-child(10) { width: 12%; }
         .target-table th:nth-child(1), .target-table td:nth-child(1) { width: 6%; }
         .target-table th:nth-child(2), .target-table td:nth-child(2) { width: 8%; }
-        .target-table th:nth-child(3), .target-table td:nth-child(3) { width: 25%; }
-        .target-table th:nth-child(4), .target-table td:nth-child(4) { width: 9%; }
-        .target-table th:nth-child(5), .target-table td:nth-child(5) { width: 9%; }
-        .target-table th:nth-child(6), .target-table td:nth-child(6) { width: 9%; }
-        .target-table th:nth-child(7), .target-table td:nth-child(7) { width: 10%; }
-        .target-table th:nth-child(8), .target-table td:nth-child(8) { width: 14%; }
-        .target-table th:nth-child(9), .target-table td:nth-child(9) { width: 10%; }
+        .target-table th:nth-child(3), .target-table td:nth-child(3) { width: 22%; }
+        .target-table th:nth-child(4), .target-table td:nth-child(4) { width: 8%; }
+        .target-table th:nth-child(5), .target-table td:nth-child(5) { width: 8%; }
+        .target-table th:nth-child(6), .target-table td:nth-child(6) { width: 8%; }
+        .target-table th:nth-child(7), .target-table td:nth-child(7) { width: 9%; }
+        .target-table th:nth-child(8), .target-table td:nth-child(8) { width: 8%; }
+        .target-table th:nth-child(9), .target-table td:nth-child(9) { width: 13%; }
+        .target-table th:nth-child(10), .target-table td:nth-child(10) { width: 8%; }
         .action-badge {
             border-radius: 999px;
             display: inline-flex;
@@ -780,6 +808,13 @@ def apply_app_styles() -> None:
         .stButton button {
             border-radius: 7px;
             font-weight: 760;
+        }
+        div[data-testid="stDownloadButton"] button {
+            border-radius: 7px;
+            font-weight: 760;
+            margin-top: 0.45rem;
+            min-height: 2.15rem;
+            width: auto;
         }
         div[data-testid="stExpander"] {
             background: #0E1420;

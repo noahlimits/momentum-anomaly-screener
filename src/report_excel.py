@@ -101,6 +101,7 @@ def _portfolio_check_frame(result: StrategyResult) -> pd.DataFrame:
 
 
 def _recommendations_frame(result: StrategyResult) -> pd.DataFrame:
+    score_by_ticker = {score.ticker: score for score in result.scores}
     rows = [
         {
             "action": rec.action,
@@ -109,6 +110,7 @@ def _recommendations_frame(result: StrategyResult) -> pd.DataFrame:
             "target_shares": rec.target_shares,
             "share_change": rec.share_change,
             "current_price": rec.current_price,
+            "atr20": score_by_ticker[rec.ticker].atr20 if rec.ticker in score_by_ticker else None,
             "position_value": rec.target_value,
             "target_weight": rec.target_weight,
             "target_rank": rec.target_rank,
@@ -140,6 +142,7 @@ def side_by_side_frame(result: StrategyResult) -> pd.DataFrame:
                 "current_value": current_shares * price if price is not None else None,
                 "target_shares": target_shares,
                 "target_price": price,
+                "atr20": score.atr20 if score else None,
                 "target_value": target_shares * price if price is not None else None,
                 "share_change": target_shares - current_shares,
                 "action": rec.action if rec else "HOLD",
@@ -259,6 +262,7 @@ def _combined_row(rec: Any, score: Any) -> dict[str, Any]:
         "shares": rec.current_shares,
         "current_price": rec.current_price,
         "current_value": rec.current_shares * rec.current_price if rec.current_price else None,
+        "atr20": score.atr20 if score else None,
         "momentum_rank": score.rank if score else None,
         "qualified_rank": score.qualified_rank if score else None,
         "percentile_rank": score.percentile_rank if score else None,
