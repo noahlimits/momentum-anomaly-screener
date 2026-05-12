@@ -43,7 +43,7 @@ def main() -> None:
     )
 
     universes = enabled_universes(db)
-    labels = [f"{item['display_name']} ({item['universe_id']})" for item in universes]
+    labels = [f"{index}. {item['display_name']}" for index, item in enumerate(universes, start=1)]
     default_index = next((index for index, item in enumerate(universes) if item["default_profile"]), 0)
 
     controls = st.columns([1, 0.85, 1.35, 0.65])
@@ -179,7 +179,7 @@ def enabled_universes(db: Database) -> list[dict]:
             """
             SELECT * FROM universe_profiles
             WHERE enabled = 1
-            ORDER BY default_profile DESC, display_name
+            ORDER BY sort_order, display_name
             """
         ).fetchall()
     return [dict(row) for row in rows]
@@ -358,7 +358,27 @@ def show_faq_sidebar() -> None:
 
             **Why switch universes**
 
-            The universe defines the opportunity set. S&P 500 is broad large-cap U.S. Nasdaq-100 is growth-heavy. Mid-cap and small-cap universes can be more aggressive. International and emerging-market universes add geographic diversification but can introduce more data, currency, and liquidity noise.
+            The universe defines the opportunity set. These are ranked in the dropdown from strongest general-purpose fit to more specialized or noisier screens.
+
+            **Open screening universes**
+
+            1. S&P 500: best default. Broad, liquid, large-cap U.S. stocks with clean data.
+
+            2. Russell 1000 Growth: broad large/mid-cap growth universe. Good when you want momentum candidates beyond the S&P 500 but still want liquid U.S. names.
+
+            3. U.S. Information Technology (VGT): best pure technology-sector screen. It uses VGT holdings as a practical proxy for the MSCI US IMI Information Technology 25/50 universe. It excludes tech-adjacent names classified outside information technology.
+
+            4. Nasdaq Composite Proxy (ONEQ): broad technology-adjacent and innovation-heavy screen using ONEQ holdings as a practical Nasdaq Composite proxy. Larger and more diverse than Nasdaq-100, but noisier than S&P 500 or Russell 1000 Growth.
+
+            5. S&P MidCap 400: mid-cap U.S. stocks. More opportunity for momentum, more volatility than large caps.
+
+            6. S&P SmallCap 600: quality-screened small caps. More aggressive, but cleaner than the full Russell 2000.
+
+            7. Russell 2000: broad small-cap universe. Useful for aggressive screens, but the noisiest enabled universe because many names are smaller and less liquid.
+
+            8. Nasdaq-100: concentrated large-cap growth/innovation list. Useful for a narrow mega-cap screen, but not as good as the broader tech or growth universes for candidate discovery.
+
+            Developed ex-U.S., emerging markets, emerging-market small caps, and frontier markets are disabled because currency, ticker mapping, liquidity, and data-quality issues make them weaker first-class screening universes in this local tool.
             """
         )
 

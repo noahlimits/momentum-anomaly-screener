@@ -21,6 +21,7 @@ settings:
 universe_profiles:
   - universe_id: sp500
     display_name: S&P 500
+    sort_order: 1
     enabled: true
     default_profile: true
     constituent_source_type: wikipedia
@@ -30,19 +31,45 @@ universe_profiles:
     currency: USD
     exchange_scope: US large cap
     notes: Standard large-cap U.S. universe.
-  - universe_id: nasdaq100
-    display_name: Nasdaq-100
+  - universe_id: russell1000_growth
+    display_name: Russell 1000 Growth
+    sort_order: 2
     enabled: true
     default_profile: false
-    constituent_source_type: wikipedia
-    constituent_source: https://en.wikipedia.org/wiki/Nasdaq-100
-    regime_proxy: QQQ
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239706/ishares-russell-1000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWF_holdings&dataType=fund
+    regime_proxy: IWF
     regime_ma_days: 200
     currency: USD
-    exchange_scope: US large cap growth
-    notes: Growth/technology-concentrated large-cap universe.
+    exchange_scope: US large/mid cap growth
+    notes: Broad U.S. growth universe; strong default when a user wants momentum candidates beyond the S&P 500.
+  - universe_id: us_info_tech_vgt
+    display_name: U.S. Information Technology (VGT)
+    sort_order: 3
+    enabled: true
+    default_profile: false
+    constituent_source_type: companiesmarketcap_holdings
+    constituent_source: https://companiesmarketcap.com/vanguard-information-technology-index-fund-etf-shares/holdings/
+    regime_proxy: VGT
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US information technology sector
+    notes: VGT holdings proxy for the MSCI US IMI Information Technology 25/50 universe; best pure technology-sector target.
+  - universe_id: nasdaq_composite_oneq
+    display_name: Nasdaq Composite Proxy (ONEQ)
+    sort_order: 4
+    enabled: true
+    default_profile: false
+    constituent_source_type: companiesmarketcap_holdings
+    constituent_source: https://companiesmarketcap.com/fidelity-nasdaq-composite-index-etf/holdings/
+    regime_proxy: ONEQ
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: Nasdaq-listed innovation/growth proxy
+    notes: ONEQ holdings proxy for the Nasdaq Composite; broad technology-adjacent and innovation-heavy universe.
   - universe_id: sp400
     display_name: S&P MidCap 400
+    sort_order: 5
     enabled: true
     default_profile: false
     constituent_source_type: ishares_csv
@@ -52,30 +79,9 @@ universe_profiles:
     currency: USD
     exchange_scope: US mid cap
     notes: ETF holdings proxy via IJH.
-  - universe_id: russell1000_growth
-    display_name: Russell 1000 Growth
-    enabled: true
-    default_profile: false
-    constituent_source_type: ishares_csv
-    constituent_source: https://www.ishares.com/us/products/239706/ishares-russell-1000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWF_holdings&dataType=fund
-    regime_proxy: IWF
-    regime_ma_days: 200
-    currency: USD
-    exchange_scope: US large/mid cap growth
-    notes: ETF holdings proxy via IWF.
-  - universe_id: russell2000
-    display_name: Russell 2000
-    enabled: true
-    default_profile: false
-    constituent_source_type: ishares_csv
-    constituent_source: https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund
-    regime_proxy: IWM
-    regime_ma_days: 200
-    currency: USD
-    exchange_scope: US small cap
-    notes: ETF holdings proxy via IWM.
   - universe_id: sp600
     display_name: S&P SmallCap 600
+    sort_order: 6
     enabled: true
     default_profile: false
     constituent_source_type: ishares_csv
@@ -84,10 +90,35 @@ universe_profiles:
     regime_ma_days: 200
     currency: USD
     exchange_scope: US small cap
-    notes: ETF holdings proxy via IJR.
+    notes: Quality-screened small-cap universe; aggressive but cleaner than the full Russell 2000.
+  - universe_id: russell2000
+    display_name: Russell 2000
+    sort_order: 7
+    enabled: true
+    default_profile: false
+    constituent_source_type: ishares_csv
+    constituent_source: https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund
+    regime_proxy: IWM
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US small cap
+    notes: Broadest U.S. small-cap universe; useful for aggressive screens but noisier and more liquidity-sensitive.
+  - universe_id: nasdaq100
+    display_name: Nasdaq-100
+    sort_order: 8
+    enabled: true
+    default_profile: false
+    constituent_source_type: wikipedia
+    constituent_source: https://en.wikipedia.org/wiki/Nasdaq-100
+    regime_proxy: QQQ
+    regime_ma_days: 200
+    currency: USD
+    exchange_scope: US large cap growth
+    notes: Narrow large-cap innovation/growth universe; useful for concentrated screens but not as broad as the better defaults.
   - universe_id: msci_world_ex_usa
     display_name: MSCI World ex USA
-    enabled: true
+    sort_order: 90
+    enabled: false
     default_profile: false
     constituent_source_type: ishares_csv
     constituent_source: https://www.ishares.com/us/products/244049/ishares-core-msci-eafe-etf/1467271812596.ajax?fileType=csv&fileName=IEFA_holdings&dataType=fund
@@ -95,10 +126,11 @@ universe_profiles:
     regime_ma_days: 200
     currency: USD
     exchange_scope: Developed markets ex US
-    notes: ETF holdings proxy via IEFA.
+    notes: "Disabled: useful conceptually, but mixed currencies, foreign ticker mapping, and data quality make it a weaker default candidate universe here."
   - universe_id: msci_em
     display_name: MSCI Emerging Markets
-    enabled: true
+    sort_order: 91
+    enabled: false
     default_profile: false
     constituent_source_type: ishares_csv
     constituent_source: https://www.ishares.com/us/products/239637/ishares-msci-emerging-markets-etf/1467271812596.ajax?fileType=csv&fileName=EEM_holdings&dataType=fund
@@ -106,10 +138,11 @@ universe_profiles:
     regime_ma_days: 200
     currency: USD
     exchange_scope: Emerging markets
-    notes: ETF holdings proxy via EEM.
+    notes: "Disabled: emerging-market data and liquidity noise make it a weaker default candidate universe here."
   - universe_id: msci_em_smallcap
     display_name: MSCI Emerging Markets Small Cap
-    enabled: true
+    sort_order: 92
+    enabled: false
     default_profile: false
     constituent_source_type: ishares_csv
     constituent_source: https://www.ishares.com/us/products/239642/ishares-msci-emerging-markets-smallcap-etf/1467271812596.ajax?fileType=csv&fileName=EEMS_holdings&dataType=fund
@@ -117,9 +150,10 @@ universe_profiles:
     regime_ma_days: 200
     currency: USD
     exchange_scope: Emerging markets small cap
-    notes: ETF holdings proxy via EEMS.
+    notes: "Disabled: too much data, liquidity, currency, and ticker-mapping noise for a clean first-class universe."
   - universe_id: msci_frontier
     display_name: MSCI Frontier Markets
+    sort_order: 93
     enabled: false
     default_profile: false
     constituent_source_type: static_csv

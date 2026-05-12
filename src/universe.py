@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from io import StringIO
+import re
 
 import pandas as pd
 import requests
@@ -29,6 +30,8 @@ def load_constituents(profile: dict, root_dir: Path) -> list[Constituent]:
         return _load_wikipedia(profile["universe_id"], source)
     if source_type == "ishares_csv":
         return _load_ishares_csv(source)
+    if source_type == "companiesmarketcap_holdings":
+        return _load_companiesmarketcap_holdings(source, profile)
     raise ValueError(f"Unsupported constituent source type: {source_type}")
 
 
@@ -158,6 +161,45 @@ def _load_ishares_csv(source: str) -> list[Constituent]:
     return constituents
 
 
+def _load_companiesmarketcap_holdings(source: str, profile: dict) -> list[Constituent]:
+    response = requests.get(
+        source,
+        headers={"User-Agent": "MomentumAnomalyScreener/1.0 (+local decision-support tool)"},
+        timeout=60,
+    )
+    response.raise_for_status()
+    tables = pd.read_html(StringIO(response.text))
+    table = _first_table_with_column(tables, "Ticker")
+    normalized = {str(column).lower().strip(): column for column in table.columns}
+    required = {"ticker", "name"}
+    missing = required - set(normalized)
+    if missing:
+        raise ValueError(f"CompaniesMarketCap holdings table missing expected columns {sorted(missing)}: {source}")
+
+    source_date = _source_date_from_companiesmarketcap(response.text)
+    constituents: list[Constituent] = []
+    seen: set[str] = set()
+    for _, row in table.iterrows():
+        raw_ticker = str(row.get(normalized["ticker"], "")).strip()
+        ticker = safe_ticker_for_yfinance(raw_ticker)
+        if not ticker or ticker.lower() in {"nan", "n/a"} or ticker in seen:
+            continue
+        seen.add(ticker)
+        constituents.append(
+            Constituent(
+                ticker=ticker,
+                company_name=str(row.get(normalized["name"], "")).strip(),
+                sector=str(profile.get("exchange_scope", "")).strip(),
+                source=source,
+                source_date=source_date,
+                active=True,
+            )
+        )
+    if not constituents:
+        raise ValueError(f"No equity holdings found in CompaniesMarketCap table: {source}")
+    return constituents
+
+
 def format_ishares_ticker(raw_ticker: str, exchange: str = "", location: str = "") -> str:
     ticker = raw_ticker.strip().upper()
     if not ticker or ticker in {"-", "CASH", "USD"}:
@@ -228,8 +270,13 @@ def _source_date_from_ishares(lines: list[str]) -> str:
     return ""
 
 
+def _source_date_from_companiesmarketcap(text: str) -> str:
+    match = re.search(r"Etf holdings as of\s*<span[^>]*>([^<]+)</span>", text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
 def _first_table_with_column(tables: list[pd.DataFrame], column: str) -> pd.DataFrame:
     for table in tables:
         if column in table.columns:
             return table
-    raise ValueError(f"No Wikipedia table found with column {column}")
+    raise ValueError(f"No holdings table found with column {column}")

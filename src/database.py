@@ -138,7 +138,11 @@ class Database:
             table: {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for table in ["portfolios", "mirror_portfolio", "run_log", "security_scores", "recommendations"]
         }
+        universe_columns = {row["name"] for row in conn.execute("PRAGMA table_info(universe_profiles)").fetchall()}
         additions = {
+            "universe_profiles": {
+                "sort_order": "ALTER TABLE universe_profiles ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 999",
+            },
             "portfolios": {
                 "target_positions": "ALTER TABLE portfolios ADD COLUMN target_positions INTEGER NOT NULL DEFAULT 10",
             },
@@ -158,6 +162,7 @@ class Database:
                 "target_rank": "ALTER TABLE recommendations ADD COLUMN target_rank INTEGER",
             },
         }
+        columns_by_table["universe_profiles"] = universe_columns
         for table, table_additions in additions.items():
             for column, sql in table_additions.items():
                 if column not in columns_by_table[table]:
@@ -180,13 +185,14 @@ class Database:
             conn.execute(
                 """
                 INSERT INTO universe_profiles(
-                    universe_id, display_name, enabled, default_profile,
+                    universe_id, display_name, sort_order, enabled, default_profile,
                     constituent_source_type, constituent_source, regime_proxy,
                     regime_ma_days, currency, exchange_scope, notes, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(universe_id) DO UPDATE SET
                     display_name = excluded.display_name,
+                    sort_order = excluded.sort_order,
                     enabled = excluded.enabled,
                     default_profile = excluded.default_profile,
                     constituent_source_type = excluded.constituent_source_type,
@@ -201,6 +207,7 @@ class Database:
                 (
                     profile["universe_id"],
                     profile.get("display_name", profile["universe_id"]),
+                    int(profile.get("sort_order", 999)),
                     int(bool(profile.get("enabled", True))),
                     int(bool(profile.get("default_profile", False))),
                     profile.get("constituent_source_type", "static_csv"),
@@ -229,6 +236,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS universe_profiles (
     universe_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 999,
     enabled INTEGER NOT NULL DEFAULT 1,
     default_profile INTEGER NOT NULL DEFAULT 0,
     constituent_source_type TEXT NOT NULL,

@@ -63,15 +63,16 @@ def create_portfolio_screen(config: AppConfig, db: Database) -> None:
     with col_b:
         target_positions = st.number_input("Number of stocks", min_value=1, max_value=20, value=10, step=1)
     with col_c:
+        universe_labels = [label_for_universe(item) for item in universes]
         universe_label = st.selectbox(
             "Index",
-            options=[label_for_universe(item) for item in universes],
+            options=universe_labels,
             index=default_index,
         )
     with col_d:
         portfolio_name = st.text_input("Portfolio name", placeholder="Example: S&P 500 Momentum")
 
-    selected_universe = universes[[label_for_universe(item) for item in universes].index(universe_label)]["universe_id"]
+    selected_universe = universes[universe_labels.index(universe_label)]["universe_id"]
 
     if st.button("Run Initial Portfolio", type="primary"):
         with st.spinner("Downloading prices and calculating the initial portfolio..."):
@@ -633,6 +634,26 @@ def show_method_sidebar() -> None:
             **Risk parity**
 
             ATR20 is the volatility estimate. Lower-volatility stocks receive more shares and higher-volatility stocks receive fewer shares so each position contributes similar one-ATR dollar risk.
+
+            **Open screening universes**
+
+            1. S&P 500: best default. Broad, liquid, large-cap U.S. stocks with clean data.
+
+            2. Russell 1000 Growth: broad large/mid-cap growth universe. Good when you want momentum candidates beyond the S&P 500 but still want liquid U.S. names.
+
+            3. U.S. Information Technology (VGT): best pure technology-sector screen. It uses VGT holdings as a practical proxy for the MSCI US IMI Information Technology 25/50 universe. It excludes tech-adjacent names classified outside information technology.
+
+            4. Nasdaq Composite Proxy (ONEQ): broad technology-adjacent and innovation-heavy screen using ONEQ holdings as a practical Nasdaq Composite proxy. Larger and more diverse than Nasdaq-100, but noisier than S&P 500 or Russell 1000 Growth.
+
+            5. S&P MidCap 400: mid-cap U.S. stocks. More opportunity for momentum, more volatility than large caps.
+
+            6. S&P SmallCap 600: quality-screened small caps. More aggressive, but cleaner than the full Russell 2000.
+
+            7. Russell 2000: broad small-cap universe. Useful for aggressive screens, but the noisiest enabled universe because many names are smaller and less liquid.
+
+            8. Nasdaq-100: concentrated large-cap growth/innovation list. Useful for a narrow mega-cap screen, but not as good as the broader tech or growth universes for candidate discovery.
+
+            Developed ex-U.S., emerging markets, emerging-market small caps, and frontier markets are disabled because currency, ticker mapping, liquidity, and data-quality issues make them weaker first-class screening universes in this local tool.
             """
         )
 
@@ -869,7 +890,7 @@ def enabled_universes(db: Database) -> list[dict]:
             """
             SELECT * FROM universe_profiles
             WHERE enabled = 1
-            ORDER BY default_profile DESC, display_name
+            ORDER BY sort_order, display_name
             """
         ).fetchall()
     return [dict(row) for row in rows]
@@ -928,7 +949,7 @@ def percent_or_blank(value) -> str:
 
 
 def label_for_universe(universe: dict) -> str:
-    return f"{universe['display_name']} ({universe['universe_id']})"
+    return f"{int(universe.get('sort_order') or 999)}. {universe['display_name']}"
 
 
 def portfolio_label(portfolio: dict) -> str:
