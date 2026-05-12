@@ -20,7 +20,7 @@ APP_ROOT = Path(__file__).resolve().parent
 
 
 @st.cache_resource
-def app_context() -> tuple[AppConfig, Database]:
+def app_context(config_updated_at: float) -> tuple[AppConfig, Database]:
     config = AppConfig.load(APP_ROOT / "config.yaml")
     db = Database(config.database_path)
     db.initialize(config)
@@ -30,7 +30,7 @@ def app_context() -> tuple[AppConfig, Database]:
 def main() -> None:
     st.set_page_config(page_title="Momentum Anomaly Screener", layout="wide", initial_sidebar_state="collapsed")
     apply_app_styles()
-    config, db = app_context()
+    config, db = app_context((APP_ROOT / "config.yaml").stat().st_mtime)
     show_method_sidebar()
 
     st.markdown(
